@@ -49,8 +49,26 @@ class World:
         self.anchors.add((x, y))
 
     def grade(self, x: int, y: int) -> None:
+        """Average a cell's elevation with its 3x3 neighborhood."""
+        if not self.in_bounds(x, y):
+            return
+        total = 0.0
+        count = 0
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                nx, ny = x + dx, y + dy
+                if self.in_bounds(nx, ny):
+                    total += self.elevation[ny][nx]
+                    count += 1
+        self.elevation[y][x] = total / count
+
+    def excavate(self, x: int, y: int) -> None:
         if self.in_bounds(x, y):
-            self.elevation[y][x] *= 0.2
+            self.elevation[y][x] -= CONFIG.regolith_per_excavate_cm
+
+    def deposit(self, x: int, y: int) -> None:
+        if self.in_bounds(x, y):
+            self.elevation[y][x] += CONFIG.regolith_per_excavate_cm
 
     def foundation_cells(self) -> Iterable[tuple[int, int]]:
         cx, cy = CONFIG.pod_center

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Optional
 
 import simpy
@@ -8,22 +7,6 @@ import simpy
 from .config import CONFIG
 from .pathfinding import astar
 from .world import World
-
-
-@dataclass
-class Robot:
-    rid: str
-    kind: str
-    x: int
-    y: int
-    color: tuple[int, int, int]
-    state: str = "idle"
-    carrying: Optional[str] = None
-    battery: float = 100.0
-
-    @property
-    def pos(self) -> tuple[int, int]:
-        return (self.x, self.y)
 
 
 def _passable(world: World, self_pos: tuple[int, int]):
@@ -37,143 +20,163 @@ def _passable(world: World, self_pos: tuple[int, int]):
     return ok
 
 
-def move_to(
-    env: simpy.Environment,
-    world: World,
-    robot: Robot,
-    goal: tuple[int, int],
-    speed: float,
-):
-    """SimPy process: step robot along an A* path toward goal."""
-    while robot.pos != goal:
-        path = astar(robot.pos, goal, _passable(world, robot.pos))
-        if not path or len(path) < 2:
-            yield env.timeout(0.5)
-            continue
-        next_cell = path[1]
-        nx, ny = next_cell
-        if world.is_blocked(nx, ny) and next_cell != goal:
-            yield env.timeout(0.2)
-            continue
-        yield env.timeout(1.0 / max(speed, 0.1))
-        robot.x, robot.y = nx, ny
-        robot.battery = max(0.0, robot.battery - 0.05)
+class Robot:
+    """Base class — anything with a position on the grid that can navigate."""
+
+    kind: str = "robot"
+    color: tuple[int, int, int] = (200, 200, 200)
+    speed: float = 1.0
+
+    def __init__(self, rid: str, x: int, y: int):
+        self.rid = rid
+        self.x = x
+        self.y = y
+        self.state = "idle"
+        self.battery = 100.0
+
+    @property
+    def pos(self) -> tuple[int, int]:
+        return (self.x, self.y)
+
+    @property
+    def carrying(self) -> Optional[str]:
+        return None
+
+    def move_to(self, env: simpy.Environment, world: World, goal: tuple[int, int]):
+        while self.pos != goal:
+            path = astar(self.pos, goal, _passable(world, self.pos))
+            if not path or len(path) < 2:
+                yield env.timeout(0.5)
+                continue
+            nx, ny = path[1]
+            if world.is_blocked(nx, ny) and (nx, ny) != goal:
+                yield env.timeout(0.2)
+                continue
+            yield env.timeout(1.0 / max(self.speed, 0.1))
+            self.x, self.y = nx, ny
+            self.battery = max(0.0, self.battery - 0.05)
 
 
-# ---------------------------------------------------------------------------
-# Phase 1 — Site Preparation
-# ---------------------------------------------------------------------------
+class Loader(Robot):
+    kind = "loader"
+    color = (240, 180, 60)
+    speed = CONFIG.loader_speed
 
+    def __init__(self, rid: str, x: int, y: int):
+        super().__init__(rid, x, y)
+        self.regolith = 0
 
-def loader_grade(
-    env: simpy.Environment,
-    world: World,
-    robot: Robot,
-    targets: simpy.Store,
-    done: simpy.Event,
-):
-    while True:
-        if not targets.items:
-            if done.triggered:
-                return
-            yield env.timeout(0.2)
-            continue
-        cell = yield targets.get()
-        if not isinstance(cell, tuple):
-            continue
-        robot.state = "grading"
-        yield env.process(move_to(env, world, robot, cell, CONFIG.loader_speed))
+    @property
+    def carrying(self) -> Optional[str]:
+        return f"reg×{self.regolith}" if self.regolith else None
+
+    def grade(self, env: simpy.Environment, world: World, cell: tuple[int, int]):
+        self.state = "grading"
+        yield env.process(self.move_to(env, world, cell))
         yield env.timeout(CONFIG.grade_time)
         world.grade(*cell)
-        robot.state = "idle"
+        self.state = "idle"
+
+    def excavate(self, env: simpy.Environment, world: World, cell: tuple[int, int]):
+        if self.regolith >= CONFIG.loader_capacity:
+            return
+        self.state = "excavating"
+        yield env.process(self.move_to(env, world, cell))
+        yield env.timeout(CONFIG.excavate_time)
+        world.excavate(*cell)
+        self.regolith += 1
+        self.state = "idle"
+
+    def unload_ground(
+        self, env: simpy.Environment, world: World, cell: tuple[int, int]
+    ):
+        if self.regolith == 0:
+            return
+        self.state = "unloading"
+        yield env.process(self.move_to(env, world, cell))
+        yield env.timeout(CONFIG.unload_time)
+        for _ in range(self.regolith):
+            world.deposit(*cell)
+        self.regolith = 0
+        self.state = "idle"
+
+    def unload_into(
+        self, env: simpy.Environment, world: World, producer: "Producer"
+    ):
+        if self.regolith == 0:
+            return
+        self.state = "feeding"
+        yield env.process(self.move_to(env, world, producer.pos))
+        yield env.timeout(CONFIG.unload_time)
+        producer.regolith_inventory += self.regolith
+        self.regolith = 0
+        self.state = "idle"
 
 
-# ---------------------------------------------------------------------------
-# Phase 2 — Protective Shell
-# ---------------------------------------------------------------------------
+class Producer(Robot):
+    kind = "producer"
+    color = (120, 200, 240)
+    speed = CONFIG.producer_speed
+
+    def __init__(self, rid: str, x: int, y: int):
+        super().__init__(rid, x, y)
+        self.regolith_inventory = 0
+
+    @property
+    def carrying(self) -> Optional[str]:
+        return f"feed×{self.regolith_inventory}" if self.regolith_inventory else None
+
+    def run(
+        self,
+        env: simpy.Environment,
+        world: World,
+        block_store: simpy.Store,
+        stop: simpy.Event,
+    ):
+        while not stop.triggered:
+            if self.regolith_inventory >= CONFIG.regolith_per_block:
+                self.state = "producing"
+                yield env.timeout(CONFIG.produce_time)
+                if stop.triggered:
+                    break
+                self.regolith_inventory -= CONFIG.regolith_per_block
+                yield block_store.put(self.pos)
+                self.battery = max(0.0, self.battery - 1.0)
+            else:
+                self.state = "waiting"
+                yield env.timeout(0.5)
+        self.state = "idle"
 
 
-def producer_loop(
-    env: simpy.Environment,
-    world: World,
-    robot: Robot,
-    block_store: simpy.Store,
-    stop: simpy.Event,
-):
-    robot.state = "producing"
-    while not stop.triggered:
-        yield env.timeout(CONFIG.produce_time)
-        if stop.triggered:
-            break
-        yield block_store.put(robot.pos)
-        robot.battery = max(0.0, robot.battery - 1.0)
+class Assembler(Robot):
+    kind = "assembler"
+    color = (220, 120, 220)
+    speed = CONFIG.assembler_speed
 
+    def __init__(self, rid: str, x: int, y: int):
+        super().__init__(rid, x, y)
+        self._carrying: Optional[str] = None
 
-def assembler_anchor(
-    env: simpy.Environment,
-    world: World,
-    robot: Robot,
-    anchor_queue: simpy.Store,
-    done: simpy.Event,
-):
-    while True:
-        if not anchor_queue.items:
-            if done.triggered:
-                return
-            yield env.timeout(0.2)
-            continue
-        cell = yield anchor_queue.get()
-        if not isinstance(cell, tuple):
-            continue
-        robot.state = "anchoring"
-        yield env.process(move_to(env, world, robot, cell, CONFIG.assembler_speed))
-        yield env.timeout(CONFIG.anchor_drive_time)
-        world.set_anchor(*cell)
-        robot.state = "idle"
+    @property
+    def carrying(self) -> Optional[str]:
+        return self._carrying
 
-
-def assembler_build(
-    env: simpy.Environment,
-    world: World,
-    robot: Robot,
-    block_queue: simpy.Store,
-    placements: simpy.Store,
-    done: simpy.Event,
-):
-    while True:
-        if not placements.items:
-            if done.triggered:
-                return
-            yield env.timeout(0.2)
-            continue
-        target = yield placements.get()
-        if not isinstance(target, tuple):
-            continue
-        robot.state = "fetch_block"
-        _ = yield block_queue.get()
-        robot.carrying = "block"
-        robot.state = "placing"
-        yield env.process(move_to(env, world, robot, target, CONFIG.assembler_speed))
-        yield env.timeout(CONFIG.block_place_time)
-        world.set_block(*target)
-        robot.carrying = None
-        robot.state = "idle"
-
-
-# ---------------------------------------------------------------------------
-# Phase 3 — Deployment & Docking
-# ---------------------------------------------------------------------------
-
-
-def docker_process(
-    env: simpy.Environment,
-    world: World,
-    robot: Robot,
-    airlock_cell: tuple[int, int],
-):
-    robot.state = "docking"
-    yield env.process(move_to(env, world, robot, airlock_cell, CONFIG.assembler_speed))
-    yield env.timeout(CONFIG.dock_time)
-    world.airlock_docked = True
-    world.pod_deployed = True
-    robot.state = "idle"
+    def fetch_and_place(
+        self,
+        env: simpy.Environment,
+        world: World,
+        source: tuple[int, int],
+        target: tuple[int, int],
+        item: str,
+        place_time: float,
+        set_fn,
+    ):
+        self.state = f"fetch_{item}"
+        yield env.process(self.move_to(env, world, source))
+        self._carrying = item
+        self.state = f"place_{item}"
+        yield env.process(self.move_to(env, world, target))
+        yield env.timeout(place_time)
+        set_fn(*target)
+        self._carrying = None
+        self.state = "idle"

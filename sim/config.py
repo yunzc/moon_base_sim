@@ -16,15 +16,20 @@ class SimConfig:
     num_assemblers: int = 2
 
     loader_speed: float = 1.0
+    producer_speed: float = 0.5
     assembler_speed: float = 0.8
 
     grade_time: float = 2.0
+    excavate_time: float = 1.0
+    unload_time: float = 1.0
     produce_time: float = 6.0
     anchor_drive_time: float = 4.0
     block_place_time: float = 3.0
     dock_time: float = 8.0
 
+    loader_capacity: int = 4
     regolith_per_block: int = 3
+    regolith_per_excavate_cm: float = 5.0
     num_anchors: int = 8
 
     elevation_tolerance_cm: float = 5.0
@@ -39,3 +44,4 @@ CONFIG = SimConfig()
 LOADER_DEPOT = (2, 2)
 PRODUCER_SITES: list[tuple[int, int]] = [(5, 35), (55, 35)]
 ASSEMBLER_DEPOT = (55, 5)
+REGOLITH_PITS: list[tuple[int, int]] = [(10, 35), (50, 35)]
