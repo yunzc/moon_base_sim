@@ -12,7 +12,7 @@ BG = (12, 12, 18)
 GRID = (30, 30, 40)
 POD = (80, 200, 120)
 ANCHOR = (255, 90, 90)
-BLOCK = (180, 180, 200)
+BLOCK = (80, 130, 220)
 AIRLOCK = (90, 220, 255)
 FOUNDATION_OK = (80, 200, 120)
 TEXT = (230, 230, 240)
@@ -137,3 +137,42 @@ class Renderer:
         line("Fleet:", self.big)
         for r in self.fleet:
             line(f" {r.rid} {r.kind:9s} {r.state:10s} {r.battery:4.0f}%")
+
+        self._draw_legend(x0)
+
+    def _draw_legend(self, x0: int) -> None:
+        from sim.robots import Assembler, Loader, Producer
+
+        entries: list[tuple[str, tuple[int, int, int], str]] = [
+            ("Loader",       Loader.color,    "circle"),
+            ("Producer",     Producer.color,  "circle"),
+            ("Assembler",    Assembler.color, "circle"),
+            ("Pod",          POD,             "ring"),
+            ("Anchor",       ANCHOR,          "square"),
+            ("Block",        BLOCK,           "square"),
+            ("Airlock",      AIRLOCK,         "square"),
+            ("Foundation",   FOUNDATION_OK,   "outline"),
+        ]
+        line_h = self.font.get_height() + 4
+        sw = 14  # swatch size
+        block_h = self.big.get_height() + 6 + len(entries) * line_h
+        y = self.h - block_h - 8
+
+        title = self.big.render("Legend", True, TEXT)
+        self.screen.blit(title, (x0, y))
+        y += self.big.get_height() + 6
+
+        for name, color, shape in entries:
+            sx, sy = x0, y + (line_h - sw) // 2
+            rect = pygame.Rect(sx, sy, sw, sw)
+            if shape == "square":
+                pygame.draw.rect(self.screen, color, rect)
+            elif shape == "outline":
+                pygame.draw.rect(self.screen, color, rect, 1)
+            elif shape == "ring":
+                pygame.draw.circle(self.screen, color, rect.center, sw // 2, 2)
+            else:  # circle
+                pygame.draw.circle(self.screen, color, rect.center, sw // 2 - 1)
+            label = self.font.render(name, True, TEXT)
+            self.screen.blit(label, (x0 + sw + 8, y))
+            y += line_h
