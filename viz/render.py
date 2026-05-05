@@ -14,8 +14,7 @@ POD = (80, 200, 120)
 ANCHOR = (255, 90, 90)
 BLOCK = (180, 180, 200)
 AIRLOCK = (90, 220, 255)
-FOUNDATION_OK = (40, 70, 40)
-FOUNDATION_HOT = (90, 40, 40)
+FOUNDATION_OK = (80, 200, 120)
 TEXT = (230, 230, 240)
 
 
@@ -60,10 +59,15 @@ class Renderer:
     def _draw_terrain(self) -> None:
         foundation = set(self.world.foundation_cells())
         tol = CONFIG.elevation_tolerance_cm
-        for (x, y) in foundation:
-            dev = abs(self.world.elevation[y][x])
-            color = FOUNDATION_OK if dev <= tol else FOUNDATION_HOT
-            pygame.draw.rect(self.screen, color, self._cell_rect(x, y))
+        for y in range(self.world.h):
+            for x in range(self.world.w):
+                dev = abs(self.world.elevation[y][x])
+                g = min(255, int(dev / 15.0 * 255))
+                pygame.draw.rect(self.screen, (g, g, g), self._cell_rect(x, y))
+                if (x, y) in foundation and dev <= tol:
+                    pygame.draw.rect(
+                        self.screen, FOUNDATION_OK, self._cell_rect(x, y), 1
+                    )
 
     def _draw_pod(self) -> None:
         cx, cy = CONFIG.pod_center
