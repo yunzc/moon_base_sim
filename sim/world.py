@@ -18,6 +18,7 @@ class World:
     blocks: set[tuple[int, int]] = field(default_factory=set)
     anchors: set[tuple[int, int]] = field(default_factory=set)
     pod_deployed: bool = False
+    pod_inflation: float = 0.0
     airlock_docked: bool = False
     phase: int = 0
     phase_label: str = "init"

@@ -26,6 +26,7 @@ class SimConfig:
     anchor_drive_time: float = 4.0
     block_place_time: float = 3.0
     dock_time: float = 8.0
+    inflate_time: float = 6.0
 
     loader_capacity: int = 4
     regolith_per_block: int = 3

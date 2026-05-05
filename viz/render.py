@@ -74,8 +74,11 @@ class Renderer:
     def _draw_pod(self) -> None:
         cx, cy = CONFIG.pod_center
         center_px = (cx * self.cell + self.cell // 2, cy * self.cell + self.cell // 2)
-        radius_px = (CONFIG.dome_radius - 2) * self.cell
-        pygame.draw.circle(self.screen, POD, center_px, max(6, radius_px // 2), 2)
+        t = self.world.pod_inflation
+        deflated = self.cell
+        inflated = CONFIG.dome_radius * self.cell
+        r = int(deflated + (inflated - deflated) * t)
+        pygame.draw.circle(self.screen, POD, center_px, max(6, r), 2)
 
     def _draw_anchors(self) -> None:
         planned = blueprint.anchor_cells()

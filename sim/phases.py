@@ -169,6 +169,13 @@ def _set_airlock(world: World, x: int, y: int) -> None:
     world.pod_deployed = True
 
 
+def _inflate_pod(env: simpy.Environment, world: World, duration: float):
+    steps = 60
+    for i in range(steps):
+        world.pod_inflation = (i + 1) / steps
+        yield env.timeout(duration / steps)
+
+
 # ---------------------------------------------------------------------------
 # Mission
 # ---------------------------------------------------------------------------
@@ -264,6 +271,9 @@ def run_mission(env: simpy.Environment, world: World, fleet: list[Robot]):
             lambda x, y: _set_airlock(world, x, y),
         )
     )
+
+    world.phase_label = "Pod Inflation"
+    yield env.process(_inflate_pod(env, world, CONFIG.inflate_time))
 
     world.phase = 4
     world.phase_label = "Mission complete"
