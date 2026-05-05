@@ -79,9 +79,17 @@ class World:
                 if dx * dx + dy * dy <= r * r:
                     yield x, y
 
-    def foundation_variance_cm(self) -> float:
+    def foundation_mean_elevation(self) -> float:
         cells = list(self.foundation_cells())
         if not cells:
             return 0.0
-        vals = [abs(self.elevation[y][x]) for x, y in cells]
-        return sum(vals) / len(vals)
+        return sum(self.elevation[y][x] for x, y in cells) / len(cells)
+
+    def foundation_variance_cm(self) -> float:
+        """Mean absolute deviation from the foundation's own mean — flatness."""
+        cells = list(self.foundation_cells())
+        if not cells:
+            return 0.0
+        vals = [self.elevation[y][x] for x, y in cells]
+        m = sum(vals) / len(vals)
+        return sum(abs(v - m) for v in vals) / len(vals)

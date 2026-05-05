@@ -29,7 +29,7 @@ class SimConfig:
 
     loader_capacity: int = 4
     regolith_per_block: int = 3
-    regolith_per_excavate_cm: float = 5.0
+    regolith_per_excavate_cm: float = 10.0
     num_anchors: int = 8
 
     elevation_tolerance_cm: float = 5.0
@@ -45,3 +45,4 @@ LOADER_DEPOT = (2, 2)
 PRODUCER_SITES: list[tuple[int, int]] = [(5, 35), (55, 35)]
 ASSEMBLER_DEPOT = (55, 5)
 REGOLITH_PITS: list[tuple[int, int]] = [(10, 35), (50, 35)]
+SPOIL_SITE = (8, 8)

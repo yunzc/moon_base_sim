@@ -9,6 +9,7 @@ from .config import (
     LOADER_DEPOT,
     PRODUCER_SITES,
     REGOLITH_PITS,
+    SPOIL_SITE,
 )
 from .robots import Assembler, Loader, Producer, Robot
 from .world import World
@@ -30,6 +31,30 @@ def spawn_fleet(world: World) -> list[Robot]:
 # ---------------------------------------------------------------------------
 # Phase 1 — Site Preparation
 # ---------------------------------------------------------------------------
+
+
+def _loader_dig_loop(
+    env: simpy.Environment,
+    world: World,
+    loader: Loader,
+    targets: simpy.Store,
+    done: simpy.Event,
+):
+    while True:
+        if loader.regolith >= CONFIG.loader_capacity:
+            yield env.process(loader.unload_ground(env, world, SPOIL_SITE))
+            continue
+        if not targets.items:
+            if done.triggered:
+                if loader.regolith > 0:
+                    yield env.process(loader.unload_ground(env, world, SPOIL_SITE))
+                return
+            yield env.timeout(0.2)
+            continue
+        cell = yield targets.get()
+        if not isinstance(cell, tuple):
+            continue
+        yield env.process(loader.excavate(env, world, cell))
 
 
 def _loader_grade_loop(
@@ -154,26 +179,32 @@ def run_mission(env: simpy.Environment, world: World, fleet: list[Robot]):
     producers = [r for r in fleet if isinstance(r, Producer)]
     assemblers = [r for r in fleet if isinstance(r, Assembler)]
 
-    # ---- Phase 1: grading -------------------------------------------------
+    # ---- Phase 1: dig, then grade ----------------------------------------
     world.phase = 1
-    world.phase_label = "Site Preparation"
-    targets = simpy.Store(env)
-    phase1_done = env.event()
+    world.phase_label = "Site Prep — Dig"
+    foundation = list(world.foundation_cells())
 
-    foundation = [
-        c
-        for c in world.foundation_cells()
-        if abs(world.elevation[c[1]][c[0]]) > CONFIG.elevation_tolerance_cm
-    ]
+    dig_targets = simpy.Store(env)
     for cell in foundation:
-        yield targets.put(cell)
-
+        yield dig_targets.put(cell)
+    dig_done = env.event()
     for ld in loaders:
-        env.process(_loader_grade_loop(env, world, ld, targets, phase1_done))
-
-    while targets.items or any(ld.state != "idle" for ld in loaders):
+        env.process(_loader_dig_loop(env, world, ld, dig_targets, dig_done))
+    while dig_targets.items or any(ld.state != "idle" for ld in loaders):
         yield env.timeout(1.0)
-    phase1_done.succeed()
+    dig_done.succeed()
+    yield env.timeout(0.5)
+
+    world.phase_label = "Site Prep — Grade"
+    grade_targets = simpy.Store(env)
+    for cell in foundation:
+        yield grade_targets.put(cell)
+    grade_done = env.event()
+    for ld in loaders:
+        env.process(_loader_grade_loop(env, world, ld, grade_targets, grade_done))
+    while grade_targets.items or any(ld.state != "idle" for ld in loaders):
+        yield env.timeout(1.0)
+    grade_done.succeed()
     yield env.timeout(1.0)
 
     # ---- Phase 2: protective shell ---------------------------------------
@@ -195,7 +226,7 @@ def run_mission(env: simpy.Environment, world: World, fleet: list[Robot]):
     # 2b — block production: loaders → producers → assemblers
     block_store = simpy.Store(env)
     placements = simpy.Store(env)
-    target_blocks = blueprint.dome_ring_cells()
+    target_blocks = blueprint.dome_floor_cells()
     for cell in target_blocks:
         yield placements.put(cell)
     stop_production = env.event()

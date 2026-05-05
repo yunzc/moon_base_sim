@@ -3,22 +3,25 @@ from __future__ import annotations
 from .config import CONFIG
 
 
-def dome_ring_cells() -> list[tuple[int, int]]:
-    """2D footprint of the compression vault: an annulus one cell thick.
+def dome_floor_cells() -> list[tuple[int, int]]:
+    """Tiled floor of the dome: every foundation cell outside the inflated core.
 
-    In a full 3D sim each ring would be stacked into a hemisphere; the 2D view
-    collapses that into a single ring of blocks surrounding the Pod.
+    The core (Pod) inflates to ``dome_radius``; the foundation extends to
+    ``berm_radius``. Blocks tile the annulus between them, sorted from
+    innermost to outermost so assemblers can place without trapping themselves
+    behind already-set blocks.
     """
     cx, cy = CONFIG.pod_center
-    r = CONFIG.dome_radius
+    r_inner = CONFIG.dome_radius
+    r_outer = CONFIG.berm_radius
     cells: list[tuple[int, int]] = []
-    for y in range(cy - r, cy + r + 1):
-        for x in range(cx - r, cx + r + 1):
+    for y in range(cy - r_outer, cy + r_outer + 1):
+        for x in range(cx - r_outer, cx + r_outer + 1):
             dx, dy = x - cx, y - cy
             d2 = dx * dx + dy * dy
-            if (r - 1) * (r - 1) < d2 <= r * r:
+            if r_inner * r_inner < d2 <= r_outer * r_outer:
                 cells.append((x, y))
-    cells.sort(key=lambda c: (c[1], c[0]))
+    cells.sort(key=lambda c: (c[0] - cx) ** 2 + (c[1] - cy) ** 2)
     return cells
 
 
@@ -40,4 +43,4 @@ def anchor_cells() -> list[tuple[int, int]]:
 
 def airlock_cell() -> tuple[int, int]:
     cx, cy = CONFIG.pod_center
-    return (cx + CONFIG.dome_radius + 1, cy)
+    return (cx + CONFIG.berm_radius + 1, cy)
