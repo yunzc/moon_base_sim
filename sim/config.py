@@ -3,11 +3,11 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class SimConfig:
-    grid_w: int = 60
+    grid_w: int = 40
     grid_h: int = 40
     cell_size: int = 16
 
-    pod_center: tuple[int, int] = (30, 20)
+    pod_center: tuple[int, int] = (20, 20)
     dome_radius: int = 6
     berm_radius: int = 10
 
@@ -34,6 +34,7 @@ class SimConfig:
     num_anchors: int = 8
 
     elevation_tolerance_cm: float = 5.0
+    min_foundation_depth_cm: float = 8.0
     dock_tolerance_mm: float = 1.0
 
     sim_speed: float = 20.0
@@ -43,7 +44,7 @@ class SimConfig:
 CONFIG = SimConfig()
 
 LOADER_DEPOT = (2, 2)
-PRODUCER_SITES: list[tuple[int, int]] = [(5, 35), (55, 35)]
-ASSEMBLER_DEPOT = (55, 5)
-REGOLITH_PITS: list[tuple[int, int]] = [(10, 35), (50, 35)]
-SPOIL_SITE = (8, 8)
+PRODUCER_SITES: list[tuple[int, int]] = [(5, 35), (35, 35)]
+ASSEMBLER_DEPOT = (37, 5)
+REGOLITH_PITS: list[tuple[int, int]] = [(8, 35), (32, 35)]
+SPOIL_SITE = (5, 5)

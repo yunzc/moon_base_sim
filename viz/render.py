@@ -10,12 +10,13 @@ from sim.world import World
 
 BG = (12, 12, 18)
 GRID = (30, 30, 40)
-POD = (80, 200, 120)
+POD = (50, 240, 240)
 ANCHOR = (255, 90, 90)
 BLOCK = (80, 130, 220)
 AIRLOCK = (90, 220, 255)
 FOUNDATION_OK = (80, 200, 120)
 TEXT = (230, 230, 240)
+LABEL = (255, 80, 80)
 
 
 class Renderer:
@@ -25,7 +26,7 @@ class Renderer:
         self.world = world
         self.fleet = fleet
         self.cell = CONFIG.cell_size
-        self.panel_w = 260
+        self.panel_w = 340
         self.w = world.w * self.cell + self.panel_w
         self.h = world.h * self.cell
         self.screen = pygame.display.set_mode((self.w, self.h))
@@ -116,7 +117,7 @@ class Renderer:
             cx = r.x * self.cell + self.cell // 2
             cy = r.y * self.cell + self.cell // 2
             pygame.draw.circle(self.screen, r.color, (cx, cy), self.cell // 2 - 2)
-            label = self.font.render(r.rid, True, TEXT)
+            label = self.font.render(r.rid, True, LABEL)
             self.screen.blit(label, (cx - 8, cy - 22))
 
     def _draw_panel(self, sim_time: float) -> None:
@@ -129,15 +130,23 @@ class Renderer:
             self.screen.blit(surf, (x0, y))
             y += surf.get_height() + 4
 
-        line(f"Phase {self.world.phase}: {self.world.phase_label}", self.big)
         line(f"t = {sim_time:6.1f}s")
-        line("")
         line(f"Foundation dev : {self.world.foundation_variance_cm():5.2f} cm")
         line(f"Anchors        : {len(self.world.anchors)} / {CONFIG.num_anchors}")
         line(
             f"Blocks placed  : {len(self.world.blocks)} / {len(blueprint.dome_floor_cells())}"
         )
         line(f"Airlock docked : {self.world.airlock_docked}")
+        line("")
+        line("Supervisor:", self.big)
+        for phase in (1, 2, 3):
+            status = self.world.supervisor_status.get(phase)
+            if status is None:
+                line(f" P{phase} pending")
+            else:
+                ok, reason = status
+                mark = "OK" if ok else "X "
+                line(f" P{phase} {mark} {reason}")
         line("")
         line("Fleet:", self.big)
         for r in self.fleet:

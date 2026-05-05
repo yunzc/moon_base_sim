@@ -23,6 +23,7 @@ class World:
     phase: int = 0
     phase_label: str = "init"
     finish_time: float = 0.0
+    supervisor_status: dict[int, tuple[bool, str]] = field(default_factory=dict)
 
     @classmethod
     def generate(cls, seed: int = 0) -> "World":

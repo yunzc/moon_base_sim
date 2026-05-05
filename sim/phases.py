@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import simpy
 
-from . import blueprint
+from . import blueprint, supervisor
 from .config import (
     ASSEMBLER_DEPOT,
     CONFIG,
@@ -13,6 +13,14 @@ from .config import (
 )
 from .robots import Assembler, Loader, Producer, Robot
 from .world import World
+
+
+def _record(world: World, phase: int) -> tuple[bool, str]:
+    ok, reason = supervisor.check(phase, world)
+    world.supervisor_status[phase] = (ok, reason)
+    mark = "OK " if ok else "FAIL"
+    print(f"[supervisor] phase {phase} {mark}: {reason}")
+    return ok, reason
 
 
 def spawn_fleet(world: World) -> list[Robot]:
@@ -202,16 +210,19 @@ def run_mission(env: simpy.Environment, world: World, fleet: list[Robot]):
     dig_done.succeed()
     yield env.timeout(0.5)
 
-    world.phase_label = "Site Prep — Grade"
-    grade_targets = simpy.Store(env)
-    for cell in foundation:
-        yield grade_targets.put(cell)
-    grade_done = env.event()
-    for ld in loaders:
-        env.process(_loader_grade_loop(env, world, ld, grade_targets, grade_done))
-    while grade_targets.items or any(ld.state != "idle" for ld in loaders):
-        yield env.timeout(1.0)
-    grade_done.succeed()
+    for attempt in range(5):
+        world.phase_label = f"Site Prep — Grade (pass {attempt + 1})"
+        grade_targets = simpy.Store(env)
+        for cell in foundation:
+            yield grade_targets.put(cell)
+        grade_done = env.event()
+        for ld in loaders:
+            env.process(_loader_grade_loop(env, world, ld, grade_targets, grade_done))
+        while grade_targets.items or any(ld.state != "idle" for ld in loaders):
+            yield env.timeout(1.0)
+        grade_done.succeed()
+        if _record(world, 1)[0]:
+            break
     yield env.timeout(1.0)
 
     # ---- Phase 2: protective shell ---------------------------------------
@@ -255,6 +266,7 @@ def run_mission(env: simpy.Environment, world: World, fleet: list[Robot]):
     build_done.succeed()
     stop_production.succeed()
     yield env.timeout(1.0)
+    _record(world, 2)
 
     # ---- Phase 3: deployment & docking -----------------------------------
     world.phase = 3
@@ -274,6 +286,7 @@ def run_mission(env: simpy.Environment, world: World, fleet: list[Robot]):
 
     world.phase_label = "Pod Inflation"
     yield env.process(_inflate_pod(env, world, CONFIG.inflate_time))
+    _record(world, 3)
 
     world.phase = 4
     world.phase_label = "Mission complete"
