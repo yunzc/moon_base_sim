@@ -11,17 +11,24 @@ from ...sim.config import (
     SPOIL_SITE,
 )
 from ...mission import blueprint
-from ...mission.supervisor import DEPLOYMENT, SHELL, SITE_PREP, PhaseCheck
+from ...mission.goals import (
+    AIRLOCK_DOCKED,
+    ANCHORS,
+    BLOCKS,
+    POD_INFLATED,
+    SITE_PREP,
+    Goal,
+)
 from ...sim.robots import Assembler, Loader, Producer, Robot
 from ...sim.world import World
 from ..base import AutonomyState
 
 
-def _record(state: AutonomyState, world: World, check: PhaseCheck) -> tuple[bool, str]:
-    ok, reason = check.check(world)
-    state.supervisor_status[check.name] = (ok, reason)
+def _record(state: AutonomyState, world: World, goal: Goal) -> tuple[bool, str]:
+    ok, reason = goal.is_done(world)
+    state.goal_status[goal.name] = (ok, reason)
     mark = "OK " if ok else "FAIL"
-    print(f"[supervisor] {check.name} {mark}: {reason}")
+    print(f"[goal] {goal.name} {mark}: {reason}")
     return ok, reason
 
 
@@ -189,9 +196,8 @@ def run_mission(
     producers = [r for r in fleet if isinstance(r, Producer)]
     assemblers = [r for r in fleet if isinstance(r, Assembler)]
 
-    # ---- Phase 1: dig, then grade ----------------------------------------
-    state.phase = 1
-    state.phase_label = "Site Prep — Dig"
+    # ---- Site prep: dig, then grade --------------------------------------
+    state.current_activity = "Site Prep — Dig"
     foundation = list(world.foundation_cells())
 
     dig_targets = simpy.Store(env)
@@ -206,7 +212,7 @@ def run_mission(
     yield env.timeout(0.5)
 
     for attempt in range(5):
-        state.phase_label = f"Site Prep — Grade (pass {attempt + 1})"
+        state.current_activity = f"Site Prep — Grade (pass {attempt + 1})"
         grade_targets = simpy.Store(env)
         for cell in foundation:
             yield grade_targets.put(cell)
@@ -220,11 +226,8 @@ def run_mission(
             break
     yield env.timeout(1.0)
 
-    # ---- Phase 2: protective shell ---------------------------------------
-    state.phase = 2
-    state.phase_label = "Protective Shell"
-
-    # 2a — anchors first (assemblers fetch from depot)
+    # ---- Anchors ---------------------------------------------------------
+    state.current_activity = "Placing anchors"
     anchor_queue = simpy.Store(env)
     for cell in blueprint.anchor_cells():
         yield anchor_queue.put(cell)
@@ -235,8 +238,10 @@ def run_mission(
     while len(world.anchors) < CONFIG.num_anchors:
         yield env.timeout(1.0)
     anchors_done.succeed()
+    _record(state, world, ANCHORS)
 
-    # 2b — block production: loaders → producers → assemblers
+    # ---- Blocks ----------------------------------------------------------
+    state.current_activity = "Producing blocks"
     block_store = simpy.Store(env)
     placements = simpy.Store(env)
     target_blocks = blueprint.dome_floor_cells()
@@ -261,20 +266,20 @@ def run_mission(
     build_done.succeed()
     stop_production.succeed()
     yield env.timeout(1.0)
-    _record(state, world, SHELL)
+    _record(state, world, BLOCKS)
 
-    # ---- Phase 3: deployment & docking -----------------------------------
-    state.phase = 3
-    state.phase_label = "Deployment & Docking"
+    # ---- Airlock ---------------------------------------------------------
+    state.current_activity = "Docking airlock"
     docker = assemblers[0]
     yield env.process(
         docker.dock_airlock(env, world, ASSEMBLER_DEPOT, blueprint.airlock_cell())
     )
+    _record(state, world, AIRLOCK_DOCKED)
 
-    state.phase_label = "Pod Inflation"
+    # ---- Pod inflation ---------------------------------------------------
+    state.current_activity = "Inflating pod"
     yield env.process(docker.inflate_pod(env, world, CONFIG.inflate_time))
-    _record(state, world, DEPLOYMENT)
+    _record(state, world, POD_INFLATED)
 
-    state.phase = 4
-    state.phase_label = "Mission complete"
+    state.current_activity = "Mission complete"
     state.finish_time = env.now

@@ -19,11 +19,10 @@ from ..sim.world import World
 class AutonomyState:
     """Bookkeeping owned by the autonomy module, not the physical world."""
 
-    phase: int = 0
-    phase_label: str = "init"
+    current_activity: str = "init"
     finish_time: float = 0.0
-    # Keyed by mission.supervisor.PhaseCheck.name.
-    supervisor_status: dict[str, tuple[bool, str]] = field(default_factory=dict)
+    # Keyed by mission.goals.Goal.name.
+    goal_status: dict[str, tuple[bool, str]] = field(default_factory=dict)
 
 
 class Autonomy(Protocol):

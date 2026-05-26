@@ -3,6 +3,6 @@
 Mission is invariant across autonomy implementations — any autonomy must satisfy
 the same blueprint and pass the same supervisor checks.
 """
-from . import blueprint, supervisor
+from . import blueprint, goals
 
-__all__ = ["blueprint", "supervisor"]
+__all__ = ["blueprint", "goals"]

@@ -4,7 +4,7 @@ import pygame
 
 from ..autonomy import Autonomy
 from ..mission import blueprint
-from ..mission.supervisor import CHECKS
+from ..mission.goals import GOALS
 from ..sim.config import CONFIG
 from ..sim.robots import Robot
 from ..sim.world import World
@@ -141,15 +141,16 @@ class Renderer:
         )
         line(f"Airlock docked : {self.world.airlock_docked}")
         line("")
-        line("Supervisor:", self.big)
-        for check in CHECKS:
-            status = self.autonomy.state.supervisor_status.get(check.name)
+        line(f"Now: {self.autonomy.state.current_activity}", self.big)
+        line("Goals:", self.big)
+        for goal in GOALS:
+            status = self.autonomy.state.goal_status.get(goal.name)
             if status is None:
-                line(f" {check.label} pending")
+                line(f" {goal.label} pending")
             else:
                 ok, reason = status
                 mark = "OK" if ok else "X "
-                line(f" {check.label} {mark} {reason}")
+                line(f" {goal.label} {mark} {reason}")
         line("")
         line("Fleet:", self.big)
         for r in self.fleet:

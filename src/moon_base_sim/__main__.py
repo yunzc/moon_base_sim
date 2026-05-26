@@ -11,7 +11,8 @@ import sys
 
 import simpy
 
-from .autonomy import load_autonomy
+from .autonomy import AutonomyState, load_autonomy
+from .mission.goals import GOALS
 from .sim.config import CONFIG
 from .sim.world import World
 
@@ -25,6 +26,14 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def _mission_done(state: AutonomyState) -> bool:
+    return all(state.goal_status.get(g.name, (False, ""))[0] for g in GOALS)
+
+
+def _goals_done(state: AutonomyState) -> int:
+    return sum(1 for g in GOALS if state.goal_status.get(g.name, (False, ""))[0])
+
+
 def run_headless(autonomy_name: str, seed: int, max_time: float) -> int:
     env = simpy.Environment()
     world = World.generate(seed=seed)
@@ -34,19 +43,21 @@ def run_headless(autonomy_name: str, seed: int, max_time: float) -> int:
     env.run(until=max_time)
     state = autonomy.state
     print(
-        f"phase={state.phase} label={state.phase_label!r} "
+        f"activity={state.current_activity!r} "
         f"anchors={len(world.anchors)} blocks={len(world.blocks)} "
-        f"docked={world.airlock_docked} finished_at={state.finish_time:.1f}s"
+        f"docked={world.airlock_docked} "
+        f"goals_done={_goals_done(state)}/{len(GOALS)} "
+        f"finished_at={state.finish_time:.1f}s"
     )
-    return 0 if state.phase >= 4 else 1
+    return 0 if _mission_done(state) else 1
 
 
 def run_visual(autonomy_name: str, seed: int) -> int:
+    autonomy = load_autonomy(autonomy_name)
     from .viz.render import Renderer
 
     env = simpy.Environment()
     world = World.generate(seed=seed)
-    autonomy = load_autonomy(autonomy_name)
     fleet = autonomy.spawn_fleet(world)
     env.process(autonomy.run(env, world, fleet))
     renderer = Renderer(world, fleet, autonomy)
@@ -60,7 +71,7 @@ def run_visual(autonomy_name: str, seed: int) -> int:
             print(f"sim error: {exc}", file=sys.stderr)
             break
         running = renderer.draw(env.now)
-        if autonomy.state.phase >= 4:
+        if _mission_done(autonomy.state):
             while renderer.draw(env.now):
                 pass
             break
