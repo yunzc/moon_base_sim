@@ -180,3 +180,30 @@ class Assembler(Robot):
         set_fn(*target)
         self._carrying = None
         self.state = "idle"
+
+    def dock_airlock(
+        self,
+        env: simpy.Environment,
+        world: World,
+        source: tuple[int, int],
+        target: tuple[int, int],
+    ):
+        def _set(x: int, y: int) -> None:
+            world.airlock_docked = True
+            world.pod_deployed = True
+
+        yield env.process(
+            self.fetch_and_place(
+                env, world, source, target, "airlock", CONFIG.dock_time, _set
+            )
+        )
+
+    def inflate_pod(
+        self, env: simpy.Environment, world: World, duration: float
+    ):
+        self.state = "inflating"
+        steps = 60
+        for i in range(steps):
+            world.pod_inflation = (i + 1) / steps
+            yield env.timeout(duration / steps)
+        self.state = "idle"

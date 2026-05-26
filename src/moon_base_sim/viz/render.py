@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import pygame
 
-from ..sim import blueprint
+from ..autonomy import Autonomy
+from ..mission import blueprint
+from ..mission.supervisor import CHECKS
 from ..sim.config import CONFIG
 from ..sim.robots import Robot
 from ..sim.world import World
@@ -20,11 +22,12 @@ LABEL = (255, 80, 80)
 
 
 class Renderer:
-    def __init__(self, world: World, fleet: list[Robot]):
+    def __init__(self, world: World, fleet: list[Robot], autonomy: Autonomy):
         pygame.init()
         pygame.display.set_caption("moon_base_sim")
         self.world = world
         self.fleet = fleet
+        self.autonomy = autonomy
         self.cell = CONFIG.cell_size
         self.panel_w = 340
         self.w = world.w * self.cell + self.panel_w
@@ -139,14 +142,14 @@ class Renderer:
         line(f"Airlock docked : {self.world.airlock_docked}")
         line("")
         line("Supervisor:", self.big)
-        for phase in (1, 2, 3):
-            status = self.world.supervisor_status.get(phase)
+        for check in CHECKS:
+            status = self.autonomy.state.supervisor_status.get(check.name)
             if status is None:
-                line(f" P{phase} pending")
+                line(f" {check.label} pending")
             else:
                 ok, reason = status
                 mark = "OK" if ok else "X "
-                line(f" P{phase} {mark} {reason}")
+                line(f" {check.label} {mark} {reason}")
         line("")
         line("Fleet:", self.big)
         for r in self.fleet:

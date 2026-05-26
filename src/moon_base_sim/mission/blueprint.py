@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .config import CONFIG
+from ..sim.config import CONFIG
 
 
 def dome_floor_cells() -> list[tuple[int, int]]:

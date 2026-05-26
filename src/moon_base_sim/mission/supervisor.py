@@ -1,17 +1,20 @@
-"""Phase quality-assurance checks.
+"""Mission acceptance checks.
 
-Each ``check_phaseN`` returns ``(ok, reason)`` describing whether the world
-has actually achieved that phase's goals. ``check(phase, world)`` is a small
-dispatcher used by the orchestrator.
+Each ``PhaseCheck`` returns ``(ok, reason)`` describing whether the world has
+achieved a milestone. Autonomies consult these to gate phase transitions and
+to report progress; the mission spec, not autonomy, defines the criteria.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Callable
+
+from ..sim.config import CONFIG
+from ..sim.world import World
 from . import blueprint
-from .config import CONFIG
-from .world import World
 
 
-def check_phase1(world: World) -> tuple[bool, str]:
+def check_site_prep(world: World) -> tuple[bool, str]:
     f_cells = list(world.foundation_cells())
     if not f_cells:
         return False, "no foundation cells"
@@ -41,7 +44,7 @@ def check_phase1(world: World) -> tuple[bool, str]:
     return True, summary
 
 
-def check_phase2(world: World) -> tuple[bool, str]:
+def check_shell(world: World) -> tuple[bool, str]:
     expected_anchors = set(blueprint.anchor_cells())
     expected_blocks = set(blueprint.dome_floor_cells())
     a_missing = expected_anchors - world.anchors
@@ -55,7 +58,7 @@ def check_phase2(world: World) -> tuple[bool, str]:
     return True, summary
 
 
-def check_phase3(world: World) -> tuple[bool, str]:
+def check_deployment(world: World) -> tuple[bool, str]:
     pct = int(world.pod_inflation * 100)
     summary = f"docked={world.airlock_docked} inflated={pct}%"
     if not world.airlock_docked:
@@ -65,11 +68,15 @@ def check_phase3(world: World) -> tuple[bool, str]:
     return True, summary
 
 
-def check(phase: int, world: World) -> tuple[bool, str]:
-    if phase == 1:
-        return check_phase1(world)
-    if phase == 2:
-        return check_phase2(world)
-    if phase == 3:
-        return check_phase3(world)
-    return True, ""
+@dataclass(frozen=True)
+class PhaseCheck:
+    name: str   # stable key, used in AutonomyState.supervisor_status
+    label: str  # human-readable, shown in viz
+    check: Callable[[World], tuple[bool, str]]
+
+
+SITE_PREP = PhaseCheck("site_prep", "Site Prep", check_site_prep)
+SHELL = PhaseCheck("shell", "Shell", check_shell)
+DEPLOYMENT = PhaseCheck("deployment", "Deployment", check_deployment)
+
+CHECKS: list[PhaseCheck] = [SITE_PREP, SHELL, DEPLOYMENT]
