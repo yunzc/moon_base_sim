@@ -11,9 +11,9 @@ import sys
 
 import simpy
 
-from sim.config import CONFIG
-from sim.phases import run_mission, spawn_fleet
-from sim.world import World
+from .sim.config import CONFIG
+from .sim.phases import run_mission, spawn_fleet
+from .sim.world import World
 
 
 def parse_args() -> argparse.Namespace:
@@ -39,7 +39,7 @@ def run_headless(seed: int, max_time: float) -> int:
 
 
 def run_visual(seed: int) -> int:
-    from viz.render import Renderer
+    from .viz.render import Renderer
 
     env = simpy.Environment()
     world = World.generate(seed=seed)
@@ -63,12 +63,12 @@ def run_visual(seed: int) -> int:
     return 0
 
 
-def main() -> int:
+def main() -> None:
     args = parse_args()
     if args.headless:
-        return run_headless(args.seed, args.max_time)
-    return run_visual(args.seed)
+        raise SystemExit(run_headless(args.seed, args.max_time))
+    raise SystemExit(run_visual(args.seed))
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

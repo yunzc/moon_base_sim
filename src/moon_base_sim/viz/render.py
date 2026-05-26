@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pygame
 
-from sim import blueprint
-from sim.config import CONFIG
-from sim.robots import Robot
-from sim.world import World
+from ..sim import blueprint
+from ..sim.config import CONFIG
+from ..sim.robots import Robot
+from ..sim.world import World
 
 
 BG = (12, 12, 18)
@@ -189,7 +189,7 @@ class Renderer:
             self.screen.blit(surf, (x + bar_w + 6, ty - surf.get_height() // 2))
 
     def _draw_legend(self, x0: int) -> None:
-        from sim.robots import Assembler, Loader, Producer
+        from ..sim.robots import Assembler, Loader, Producer
 
         entries: list[tuple[str, tuple[int, int, int], str]] = [
             ("Loader",       Loader.color,    "circle"),
