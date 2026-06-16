@@ -3,7 +3,7 @@ from __future__ import annotations
 import pygame
 
 from ..autonomy import Autonomy
-from ..mission import blueprint
+from ..mission.blueprint import Blueprint
 from ..mission.goals import GOALS
 from ..sim.config import CONFIG
 from ..sim.robots import Robot
@@ -22,12 +22,19 @@ LABEL = (255, 80, 80)
 
 
 class Renderer:
-    def __init__(self, world: World, fleet: list[Robot], autonomy: Autonomy):
+    def __init__(
+        self,
+        world: World,
+        fleet: list[Robot],
+        autonomy: Autonomy,
+        blueprint: Blueprint,
+    ):
         pygame.init()
         pygame.display.set_caption("moon_base_sim")
         self.world = world
         self.fleet = fleet
         self.autonomy = autonomy
+        self.blueprint = blueprint
         self.cell = CONFIG.cell_size
         self.panel_w = 340
         self.w = world.w * self.cell + self.panel_w
@@ -62,8 +69,8 @@ class Renderer:
         return True
 
     def _draw_terrain(self) -> None:
-        foundation = set(self.world.foundation_cells())
-        f_mean = self.world.foundation_mean_elevation()
+        foundation = set(self.blueprint.foundation_cells(self.world))
+        f_mean = self.blueprint.foundation_mean_elevation(self.world)
         tol = CONFIG.elevation_tolerance_cm
         for y in range(self.world.h):
             for x in range(self.world.w):
@@ -76,16 +83,16 @@ class Renderer:
                     )
 
     def _draw_pod(self) -> None:
-        cx, cy = CONFIG.pod_center
+        cx, cy = self.blueprint.pod_center
         center_px = (cx * self.cell + self.cell // 2, cy * self.cell + self.cell // 2)
         t = self.world.pod_inflation
         deflated = self.cell
-        inflated = CONFIG.dome_radius * self.cell
+        inflated = self.blueprint.dome_radius * self.cell
         r = int(deflated + (inflated - deflated) * t)
         pygame.draw.circle(self.screen, POD, center_px, max(6, r), 2)
 
     def _draw_anchors(self) -> None:
-        planned = blueprint.anchor_cells()
+        planned = self.blueprint.anchor_cells()
         for (x, y) in planned:
             rect = self._cell_rect(x, y).inflate(-self.cell // 2, -self.cell // 2)
             placed = (x, y) in self.world.anchors
@@ -97,7 +104,7 @@ class Renderer:
             pygame.draw.rect(self.screen, BLOCK, self._cell_rect(x, y))
 
     def _draw_airlock(self) -> None:
-        x, y = blueprint.airlock_cell()
+        x, y = self.blueprint.airlock_cell()
         color = AIRLOCK if self.world.airlock_docked else (40, 80, 100)
         pygame.draw.rect(self.screen, color, self._cell_rect(x, y))
 
@@ -134,10 +141,10 @@ class Renderer:
             y += surf.get_height() + 4
 
         line(f"t = {sim_time:6.1f}s")
-        line(f"Foundation dev : {self.world.foundation_variance_cm():5.2f} cm")
+        line(f"Foundation dev : {self.blueprint.foundation_variance_cm(self.world):5.2f} cm")
         line(f"Anchors        : {len(self.world.anchors)} / {CONFIG.num_anchors}")
         line(
-            f"Blocks placed  : {len(self.world.blocks)} / {len(blueprint.dome_floor_cells())}"
+            f"Blocks placed  : {len(self.world.blocks)} / {len(self.blueprint.dome_floor_cells())}"
         )
         line(f"Airlock docked : {self.world.airlock_docked}")
         line("")

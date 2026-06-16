@@ -9,15 +9,17 @@ preconditions allow.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from ..sim.config import CONFIG
 from ..sim.world import World
-from . import blueprint
+
+if TYPE_CHECKING:
+    from .blueprint import Blueprint
 
 
-def check_site_prep(world: World) -> tuple[bool, str]:
-    f_cells = list(world.foundation_cells())
+def check_site_prep(world: World, blueprint: "Blueprint") -> tuple[bool, str]:
+    f_cells = list(blueprint.foundation_cells(world))
     if not f_cells:
         return False, "no foundation cells"
     f_set = set(f_cells)
@@ -46,25 +48,25 @@ def check_site_prep(world: World) -> tuple[bool, str]:
     return True, summary
 
 
-def check_anchors(world: World) -> tuple[bool, str]:
+def check_anchors(world: World, blueprint: "Blueprint") -> tuple[bool, str]:
     expected = set(blueprint.anchor_cells())
     missing = expected - world.anchors
     summary = f"anchors {len(world.anchors)}/{len(expected)}"
     return (not missing, summary)
 
 
-def check_blocks(world: World) -> tuple[bool, str]:
+def check_blocks(world: World, blueprint: "Blueprint") -> tuple[bool, str]:
     expected = set(blueprint.dome_floor_cells())
     missing = expected - world.blocks
     summary = f"blocks {len(world.blocks)}/{len(expected)}"
     return (not missing, summary)
 
 
-def check_airlock_docked(world: World) -> tuple[bool, str]:
+def check_airlock_docked(world: World, blueprint: "Blueprint") -> tuple[bool, str]:
     return world.airlock_docked, f"docked={world.airlock_docked}"
 
 
-def check_pod_inflated(world: World) -> tuple[bool, str]:
+def check_pod_inflated(world: World, blueprint: "Blueprint") -> tuple[bool, str]:
     pct = int(world.pod_inflation * 100)
     return world.pod_inflation >= 0.999, f"inflated={pct}%"
 
@@ -74,7 +76,7 @@ class Goal:
     name: str
     label: str
     preconditions: tuple[str, ...]
-    is_done: Callable[[World], tuple[bool, str]]
+    is_done: Callable[[World, "Blueprint"], tuple[bool, str]]
 
 
 SITE_PREP = Goal(

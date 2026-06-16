@@ -11,6 +11,7 @@ from typing import Generator, Protocol
 
 import simpy
 
+from ..mission.blueprint import Blueprint
 from ..sim.robots import Robot
 from ..sim.world import World
 
@@ -31,5 +32,9 @@ class Autonomy(Protocol):
     def spawn_fleet(self, world: World) -> list[Robot]: ...
 
     def run(
-        self, env: simpy.Environment, world: World, fleet: list[Robot]
+        self,
+        env: simpy.Environment,
+        world: World,
+        fleet: list[Robot],
+        blueprint: Blueprint,
     ) -> Generator: ...

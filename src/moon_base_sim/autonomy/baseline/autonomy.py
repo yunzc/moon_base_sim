@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import simpy
 
+from ...mission.blueprint import Blueprint
 from ...sim.robots import Robot
 from ...sim.world import World
 from ..base import AutonomyState
@@ -18,5 +19,11 @@ class Baseline:
     def spawn_fleet(self, world: World) -> list[Robot]:
         return spawn_fleet(world)
 
-    def run(self, env: simpy.Environment, world: World, fleet: list[Robot]):
-        yield from run_mission(env, world, fleet, self.state)
+    def run(
+        self,
+        env: simpy.Environment,
+        world: World,
+        fleet: list[Robot],
+        blueprint: Blueprint,
+    ):
+        yield from run_mission(env, world, fleet, self.state, blueprint)

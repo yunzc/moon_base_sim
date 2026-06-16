@@ -3,10 +3,40 @@ from __future__ import annotations
 from typing import Optional
 
 import simpy
+from pydantic import BaseModel, ConfigDict
 
-from .config import CONFIG
 from .pathfinding import astar
 from .world import World
+
+
+class RobotConfig(BaseModel):
+    """Fleet composition, movement speeds, action durations, and work amounts."""
+
+    model_config = ConfigDict(frozen=True)
+
+    num_loaders: int = 3
+    num_producers: int = 2
+    num_assemblers: int = 2
+
+    loader_speed: float = 1.0
+    producer_speed: float = 0.5
+    assembler_speed: float = 0.8
+
+    grade_time: float = 2.0
+    excavate_time: float = 1.0
+    unload_time: float = 1.0
+    produce_time: float = 6.0
+    anchor_drive_time: float = 4.0
+    block_place_time: float = 3.0
+    dock_time: float = 8.0
+    inflate_time: float = 6.0
+
+    loader_capacity: int = 4
+    regolith_per_block: int = 3
+
+    grade_neighborhood: int = 1
+    excavate_depth_cm: float = 10.0
+    deposit_height_cm: float = 10.0
 
 
 def _passable(world: World, self_pos: tuple[int, int]):
@@ -27,10 +57,11 @@ class Robot:
     color: tuple[int, int, int] = (200, 200, 200)
     speed: float = 1.0
 
-    def __init__(self, rid: str, x: int, y: int):
+    def __init__(self, rid: str, x: int, y: int, config: RobotConfig):
         self.rid = rid
         self.x = x
         self.y = y
+        self.config = config
         self.state = "idle"
         self.battery = 100.0
 
@@ -60,10 +91,10 @@ class Robot:
 class Loader(Robot):
     kind = "loader"
     color = (240, 180, 60)
-    speed = CONFIG.loader_speed
 
-    def __init__(self, rid: str, x: int, y: int):
-        super().__init__(rid, x, y)
+    def __init__(self, rid: str, x: int, y: int, config: RobotConfig):
+        super().__init__(rid, x, y, config)
+        self.speed = config.loader_speed
         self.regolith = 0
 
     @property
@@ -73,17 +104,17 @@ class Loader(Robot):
     def grade(self, env: simpy.Environment, world: World, cell: tuple[int, int]):
         self.state = "grading"
         yield env.process(self.move_to(env, world, cell))
-        yield env.timeout(CONFIG.grade_time)
-        world.grade(*cell)
+        yield env.timeout(self.config.grade_time)
+        world.grade(*cell, self.config.grade_neighborhood)
         self.state = "idle"
 
     def excavate(self, env: simpy.Environment, world: World, cell: tuple[int, int]):
-        if self.regolith >= CONFIG.loader_capacity:
+        if self.regolith >= self.config.loader_capacity:
             return
         self.state = "excavating"
         yield env.process(self.move_to(env, world, cell))
-        yield env.timeout(CONFIG.excavate_time)
-        world.excavate(*cell)
+        yield env.timeout(self.config.excavate_time)
+        world.excavate(*cell, self.config.excavate_depth_cm)
         self.regolith += 1
         self.state = "idle"
 
@@ -94,9 +125,9 @@ class Loader(Robot):
             return
         self.state = "unloading"
         yield env.process(self.move_to(env, world, cell))
-        yield env.timeout(CONFIG.unload_time)
+        yield env.timeout(self.config.unload_time)
         for _ in range(self.regolith):
-            world.deposit(*cell)
+            world.deposit(*cell, self.config.deposit_height_cm)
         self.regolith = 0
         self.state = "idle"
 
@@ -107,7 +138,7 @@ class Loader(Robot):
             return
         self.state = "feeding"
         yield env.process(self.move_to(env, world, producer.pos))
-        yield env.timeout(CONFIG.unload_time)
+        yield env.timeout(self.config.unload_time)
         producer.regolith_inventory += self.regolith
         self.regolith = 0
         self.state = "idle"
@@ -116,10 +147,10 @@ class Loader(Robot):
 class Producer(Robot):
     kind = "producer"
     color = (120, 200, 240)
-    speed = CONFIG.producer_speed
 
-    def __init__(self, rid: str, x: int, y: int):
-        super().__init__(rid, x, y)
+    def __init__(self, rid: str, x: int, y: int, config: RobotConfig):
+        super().__init__(rid, x, y, config)
+        self.speed = config.producer_speed
         self.regolith_inventory = 0
 
     @property
@@ -134,12 +165,12 @@ class Producer(Robot):
         stop: simpy.Event,
     ):
         while not stop.triggered:
-            if self.regolith_inventory >= CONFIG.regolith_per_block:
+            if self.regolith_inventory >= self.config.regolith_per_block:
                 self.state = "producing"
-                yield env.timeout(CONFIG.produce_time)
+                yield env.timeout(self.config.produce_time)
                 if stop.triggered:
                     break
-                self.regolith_inventory -= CONFIG.regolith_per_block
+                self.regolith_inventory -= self.config.regolith_per_block
                 yield block_store.put(self.pos)
                 self.battery = max(0.0, self.battery - 1.0)
             else:
@@ -151,10 +182,10 @@ class Producer(Robot):
 class Assembler(Robot):
     kind = "assembler"
     color = (220, 120, 220)
-    speed = CONFIG.assembler_speed
 
-    def __init__(self, rid: str, x: int, y: int):
-        super().__init__(rid, x, y)
+    def __init__(self, rid: str, x: int, y: int, config: RobotConfig):
+        super().__init__(rid, x, y, config)
+        self.speed = config.assembler_speed
         self._carrying: Optional[str] = None
 
     @property
@@ -194,7 +225,7 @@ class Assembler(Robot):
 
         yield env.process(
             self.fetch_and_place(
-                env, world, source, target, "airlock", CONFIG.dock_time, _set
+                env, world, source, target, "airlock", self.config.dock_time, _set
             )
         )
 

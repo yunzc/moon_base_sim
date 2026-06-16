@@ -12,6 +12,7 @@ import sys
 import simpy
 
 from .autonomy import AutonomyState, load_autonomy
+from .mission.blueprint import Blueprint
 from .mission.goals import GOALS
 from .sim.config import CONFIG
 from .sim.world import World
@@ -37,9 +38,10 @@ def _goals_done(state: AutonomyState) -> int:
 def run_headless(autonomy_name: str, seed: int, max_time: float) -> int:
     env = simpy.Environment()
     world = World.generate(seed=seed)
+    blueprint = Blueprint()
     autonomy = load_autonomy(autonomy_name)
     fleet = autonomy.spawn_fleet(world)
-    env.process(autonomy.run(env, world, fleet))
+    env.process(autonomy.run(env, world, fleet, blueprint))
     env.run(until=max_time)
     state = autonomy.state
     print(
@@ -58,9 +60,10 @@ def run_visual(autonomy_name: str, seed: int) -> int:
 
     env = simpy.Environment()
     world = World.generate(seed=seed)
+    blueprint = Blueprint()
     fleet = autonomy.spawn_fleet(world)
-    env.process(autonomy.run(env, world, fleet))
-    renderer = Renderer(world, fleet, autonomy)
+    env.process(autonomy.run(env, world, fleet, blueprint))
+    renderer = Renderer(world, fleet, autonomy, blueprint)
 
     step = CONFIG.sim_speed / CONFIG.target_fps
     running = True

@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "SimPy lunar base mission with a Pygame top-down visualization."
 requires-python = ">=3.12"
 dependencies = [
+    "numpy>=1.26",
+    "pydantic>=2.0",
     "pygame>=2.6.1",
     "simpy>=4.1.1",
 ]
