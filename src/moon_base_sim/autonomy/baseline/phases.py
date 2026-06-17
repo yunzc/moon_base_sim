@@ -15,6 +15,7 @@ from ...mission.goals import (
 from ...sim.robots import Assembler, Loader, Producer, Robot, RobotsConfig
 from ...sim.world import World
 from ..base import AutonomyState
+from ..navigation import navigate
 
 
 def _record(
@@ -44,6 +45,26 @@ def spawn_fleet(
     return fleet
 
 
+def fetch_and_place(
+    env: simpy.Environment,
+    world: World,
+    asm: Assembler,
+    source: tuple[int, int],
+    target: tuple[int, int],
+    item: str,
+    place_time: float,
+    set_fn,
+):
+    """Navigate to `source`, pick up `item`, navigate to `target`, place it.
+
+    Movement lives here (autonomy); the assembler only carries and places.
+    """
+    yield env.process(navigate(env, world, asm, source))
+    asm.pickup(item)
+    yield env.process(navigate(env, world, asm, target))
+    yield env.process(asm.place(env, world, target, place_time, set_fn))
+
+
 # ---------------------------------------------------------------------------
 # Phase 1 — Site Preparation
 # ---------------------------------------------------------------------------
@@ -59,11 +80,13 @@ def _loader_dig_loop(
 ):
     while True:
         if loader.regolith >= loader.config.loader_capacity:
+            yield env.process(navigate(env, world, loader, spoil_site))
             yield env.process(loader.unload_ground(env, world, spoil_site))
             continue
         if not targets.items:
             if done.triggered:
                 if loader.regolith > 0:
+                    yield env.process(navigate(env, world, loader, spoil_site))
                     yield env.process(loader.unload_ground(env, world, spoil_site))
                 return
             yield env.timeout(0.2)
@@ -71,6 +94,7 @@ def _loader_dig_loop(
         cell = yield targets.get()
         if not isinstance(cell, tuple):
             continue
+        yield env.process(navigate(env, world, loader, cell))
         yield env.process(loader.excavate(env, world, cell))
 
 
@@ -90,6 +114,7 @@ def _loader_grade_loop(
         cell = yield targets.get()
         if not isinstance(cell, tuple):
             continue
+        yield env.process(navigate(env, world, loader, cell))
         yield env.process(loader.grade(env, world, cell))
 
 
@@ -112,11 +137,13 @@ def _loader_supply_loop(
 ):
     while not done.triggered:
         pit = _nearest(regolith_pits, loader.pos)
+        yield env.process(navigate(env, world, loader, pit))
         while loader.regolith < loader.config.loader_capacity and not done.triggered:
             yield env.process(loader.excavate(env, world, pit))
         if done.triggered:
             break
         target = min(producers, key=lambda p: p.regolith_inventory)
+        yield env.process(navigate(env, world, loader, target.pos))
         yield env.process(loader.unload_into(env, world, target))
 
 
@@ -138,9 +165,10 @@ def _assembler_anchor_loop(
         if not isinstance(cell, tuple):
             continue
         yield env.process(
-            assembler.fetch_and_place(
+            fetch_and_place(
                 env,
                 world,
+                assembler,
                 assembler_depot,
                 cell,
                 "anchor",
@@ -171,9 +199,10 @@ def _assembler_block_loop(
         if not isinstance(source, tuple):
             continue
         yield env.process(
-            assembler.fetch_and_place(
+            fetch_and_place(
                 env,
                 world,
+                assembler,
                 source,
                 target,
                 "block",
@@ -287,9 +316,21 @@ def run_mission(
     # ---- Airlock ---------------------------------------------------------
     state.current_activity = "Docking airlock"
     docker = assemblers[0]
+
+    def _dock(x: int, y: int) -> None:
+        world.airlock_docked = True
+        world.pod_deployed = True
+
     yield env.process(
-        docker.dock_airlock(
-            env, world, layout.assembler_depot, blueprint.airlock_cell()
+        fetch_and_place(
+            env,
+            world,
+            docker,
+            layout.assembler_depot,
+            blueprint.airlock_cell(),
+            "airlock",
+            docker.config.dock_time,
+            _dock,
         )
     )
     _record(state, world, blueprint, AIRLOCK_DOCKED)

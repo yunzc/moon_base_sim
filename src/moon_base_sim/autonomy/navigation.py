@@ -1,15 +1,39 @@
+"""Navigation for autonomy implementations.
+
+Pathfinding (A*) and path-following live here, not in the simulated robot.
+A robot's only movement capability is a single cardinal `step`; the autonomy
+module decides *where* to go and walks the robot there one cell at a time.
+"""
 from __future__ import annotations
 
 import heapq
 from typing import Callable
 
+import simpy
+
+from ..sim.robots import Direction, Robot
+from ..sim.world import World
+
 Coord = tuple[int, int]
 
 NEIGHBORS_4 = [(1, 0), (-1, 0), (0, 1), (0, -1)]
 
+_DELTA_TO_DIR = {d.value: d for d in Direction}
+
 
 def manhattan(a: Coord, b: Coord) -> int:
     return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+
+def _passable(world: World, self_pos: Coord) -> Callable[[int, int], bool]:
+    def ok(x: int, y: int) -> bool:
+        if not world.in_bounds(x, y):
+            return False
+        if (x, y) == self_pos:
+            return True
+        return not world.occupancy[y][x]
+
+    return ok
 
 
 def astar(
@@ -56,3 +80,26 @@ def astar(
                 heapq.heappush(open_heap, (f, counter, neighbor))
 
     return []
+
+
+def navigate(
+    env: simpy.Environment, world: World, robot: Robot, goal: Coord
+):
+    """Walk `robot` to `goal` one cardinal step at a time, re-planning each cell.
+
+    Drives the robot purely through its `step` primitive: A* picks the next
+    cell, this converts the delta to a `Direction`, and the robot moves. Waits
+    in place when blocked by a dynamic obstacle, mirroring the previous
+    in-robot `move_to` behavior.
+    """
+    while robot.pos != goal:
+        path = astar(robot.pos, goal, _passable(world, robot.pos))
+        if not path or len(path) < 2:
+            yield env.timeout(0.5)
+            continue
+        nx, ny = path[1]
+        if world.is_blocked(nx, ny) and (nx, ny) != goal:
+            yield env.timeout(0.2)
+            continue
+        direction = _DELTA_TO_DIR[(nx - robot.x, ny - robot.y)]
+        yield from robot.step(env, world, direction)

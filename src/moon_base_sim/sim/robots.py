@@ -1,12 +1,21 @@
 from __future__ import annotations
 
+from enum import Enum
 from typing import Optional
 
 import simpy
 from pydantic import BaseModel, ConfigDict
 
-from .pathfinding import astar
 from .world import World
+
+
+class Direction(Enum):
+    """Cardinal movement on the grid (origin top-left, so y grows downward)."""
+
+    UP = (0, -1)
+    DOWN = (0, 1)
+    LEFT = (-1, 0)
+    RIGHT = (1, 0)
 
 
 class RobotConfig(BaseModel):
@@ -61,17 +70,6 @@ class RobotsConfig(BaseModel):
     assemblers: list[AssemblerConfig]
 
 
-def _passable(world: World, self_pos: tuple[int, int]):
-    def ok(x: int, y: int) -> bool:
-        if not world.in_bounds(x, y):
-            return False
-        if (x, y) == self_pos:
-            return True
-        return not world.occupancy[y][x]
-
-    return ok
-
-
 class Robot:
     """Base class — anything with a position on the grid that can navigate."""
 
@@ -96,19 +94,21 @@ class Robot:
     def carrying(self) -> Optional[str]:
         return None
 
-    def move_to(self, env: simpy.Environment, world: World, goal: tuple[int, int]):
-        while self.pos != goal:
-            path = astar(self.pos, goal, _passable(world, self.pos))
-            if not path or len(path) < 2:
-                yield env.timeout(0.5)
-                continue
-            nx, ny = path[1]
-            if world.is_blocked(nx, ny) and (nx, ny) != goal:
-                yield env.timeout(0.2)
-                continue
-            yield env.timeout(1.0 / max(self.speed, 0.1))
-            self.x, self.y = nx, ny
-            self.battery = max(0.0, self.battery - 0.05)
+    def step(self, env: simpy.Environment, world: World, direction: Direction):
+        """Move a single cell in one cardinal direction.
+
+        The only movement primitive a robot has — it cannot jump to an
+        arbitrary cell. Deciding *where* to go (pathfinding) is the autonomy
+        module's job. Guards physical bounds only; obstacle avoidance is a
+        policy concern owned by the navigator.
+        """
+        dx, dy = direction.value
+        nx, ny = self.x + dx, self.y + dy
+        if not world.in_bounds(nx, ny):
+            return
+        yield env.timeout(1.0 / max(self.speed, 0.1))
+        self.x, self.y = nx, ny
+        self.battery = max(0.0, self.battery - 0.05)
 
 
 class Loader(Robot):
@@ -126,8 +126,8 @@ class Loader(Robot):
         return f"reg×{self.regolith}" if self.regolith else None
 
     def grade(self, env: simpy.Environment, world: World, cell: tuple[int, int]):
+        """Grade at the current location. Autonomy positions the loader first."""
         self.state = "grading"
-        yield env.process(self.move_to(env, world, cell))
         yield env.timeout(self.config.grade_time)
         world.grade(*cell, self.config.grade_neighborhood)
         self.state = "idle"
@@ -136,7 +136,6 @@ class Loader(Robot):
         if self.regolith >= self.config.loader_capacity:
             return
         self.state = "excavating"
-        yield env.process(self.move_to(env, world, cell))
         yield env.timeout(self.config.excavate_time)
         world.excavate(*cell, self.config.excavate_depth_cm)
         self.regolith += 1
@@ -148,7 +147,6 @@ class Loader(Robot):
         if self.regolith == 0:
             return
         self.state = "unloading"
-        yield env.process(self.move_to(env, world, cell))
         yield env.timeout(self.config.unload_time)
         for _ in range(self.regolith):
             world.deposit(*cell, self.config.deposit_height_cm)
@@ -161,7 +159,6 @@ class Loader(Robot):
         if self.regolith == 0:
             return
         self.state = "feeding"
-        yield env.process(self.move_to(env, world, producer.pos))
         yield env.timeout(self.config.unload_time)
         producer.regolith_inventory += self.regolith
         self.regolith = 0
@@ -218,42 +215,25 @@ class Assembler(Robot):
     def carrying(self) -> Optional[str]:
         return self._carrying
 
-    def fetch_and_place(
+    def pickup(self, item: str) -> None:
+        """Grab an item at the current location (autonomy navigated here)."""
+        self._carrying = item
+        self.state = f"fetch_{item}"
+
+    def place(
         self,
         env: simpy.Environment,
         world: World,
-        source: tuple[int, int],
         target: tuple[int, int],
-        item: str,
         place_time: float,
         set_fn,
     ):
-        self.state = f"fetch_{item}"
-        yield env.process(self.move_to(env, world, source))
-        self._carrying = item
-        self.state = f"place_{item}"
-        yield env.process(self.move_to(env, world, target))
+        """Place the carried item at the current location."""
+        self.state = f"place_{self._carrying}"
         yield env.timeout(place_time)
         set_fn(*target)
         self._carrying = None
         self.state = "idle"
-
-    def dock_airlock(
-        self,
-        env: simpy.Environment,
-        world: World,
-        source: tuple[int, int],
-        target: tuple[int, int],
-    ):
-        def _set(x: int, y: int) -> None:
-            world.airlock_docked = True
-            world.pod_deployed = True
-
-        yield env.process(
-            self.fetch_and_place(
-                env, world, source, target, "airlock", self.config.dock_time, _set
-            )
-        )
 
     def inflate_pod(
         self, env: simpy.Environment, world: World, duration: float
