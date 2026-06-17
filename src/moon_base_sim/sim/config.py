@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict
 
 from ..mission.blueprint import BlueprintConfig
 from .robots import RobotsConfig
+from .sensors import SensorsConfig
 from .world import WorldConfig
 
 
@@ -42,6 +43,7 @@ class Config(BaseModel):
     blueprint: BlueprintConfig
     robots: RobotsConfig
     layout: LayoutConfig
+    sensors: SensorsConfig
 
 
 def load_config(path: str | Path) -> Config:

@@ -7,7 +7,7 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict
 
 if TYPE_CHECKING:
-    from ..sim.world import World
+    from ..sim.sensors import GtObservation
 
 
 class BlueprintConfig(BaseModel):
@@ -80,31 +80,31 @@ class Blueprint:
         cx, cy = self.config.pod_center
         return (cx + self.config.berm_radius + 1, cy)
 
-    def foundation_cells(self, world: "World") -> Iterable[tuple[int, int]]:
+    def foundation_cells(self, obs: "GtObservation") -> Iterable[tuple[int, int]]:
         cx, cy = self.config.pod_center
         r = self.config.berm_radius
-        for y in range(max(0, cy - r), min(world.h, cy + r + 1)):
-            for x in range(max(0, cx - r), min(world.w, cx + r + 1)):
+        for y in range(max(0, cy - r), min(obs.h, cy + r + 1)):
+            for x in range(max(0, cx - r), min(obs.w, cx + r + 1)):
                 dx, dy = x - cx, y - cy
                 if dx * dx + dy * dy <= r * r:
                     yield x, y
 
-    def foundation_mask(self, world: "World") -> np.ndarray:
+    def foundation_mask(self, obs: "GtObservation") -> np.ndarray:
         """Boolean grid marking the disk of radius berm_radius around the pod."""
         cx, cy = self.config.pod_center
         r = self.config.berm_radius
-        ys, xs = np.ogrid[: world.h, : world.w]
+        ys, xs = np.ogrid[: obs.h, : obs.w]
         return (xs - cx) ** 2 + (ys - cy) ** 2 <= r * r
 
-    def foundation_mean_elevation(self, world: "World") -> float:
-        vals = world.elevation[self.foundation_mask(world)]
+    def foundation_mean_elevation(self, obs: "GtObservation") -> float:
+        vals = obs.elevation[self.foundation_mask(obs)]
         if vals.size == 0:
             return 0.0
         return float(vals.mean())
 
-    def foundation_variance_cm(self, world: "World") -> float:
+    def foundation_variance_cm(self, obs: "GtObservation") -> float:
         """Mean absolute deviation from the foundation's own mean — flatness."""
-        vals = world.elevation[self.foundation_mask(world)]
+        vals = obs.elevation[self.foundation_mask(obs)]
         if vals.size == 0:
             return 0.0
         return float(np.abs(vals - vals.mean()).mean())

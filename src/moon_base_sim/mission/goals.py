@@ -11,24 +11,23 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
 
-from ..sim.world import World
-
 if TYPE_CHECKING:
+    from ..sim.sensors import GtObservation
     from .blueprint import Blueprint
 
 
-def check_site_prep(world: World, blueprint: "Blueprint") -> tuple[bool, str]:
-    f_cells = list(blueprint.foundation_cells(world))
+def check_site_prep(obs: "GtObservation", blueprint: "Blueprint") -> tuple[bool, str]:
+    f_cells = list(blueprint.foundation_cells(obs))
     if not f_cells:
         return False, "no foundation cells"
     f_set = set(f_cells)
-    f_vals = [world.elevation[y][x] for x, y in f_cells]
+    f_vals = [obs.elevation[y][x] for x, y in f_cells]
     f_mean = sum(f_vals) / len(f_vals)
 
     s_vals = [
-        world.elevation[y][x]
-        for y in range(world.h)
-        for x in range(world.w)
+        obs.elevation[y][x]
+        for y in range(obs.h)
+        for x in range(obs.w)
         if (x, y) not in f_set
     ]
     s_mean = sum(s_vals) / len(s_vals) if s_vals else 0.0
@@ -48,27 +47,27 @@ def check_site_prep(world: World, blueprint: "Blueprint") -> tuple[bool, str]:
     return True, summary
 
 
-def check_anchors(world: World, blueprint: "Blueprint") -> tuple[bool, str]:
+def check_anchors(obs: "GtObservation", blueprint: "Blueprint") -> tuple[bool, str]:
     expected = set(blueprint.anchor_cells())
-    missing = expected - world.anchors
-    summary = f"anchors {len(world.anchors)}/{len(expected)}"
+    missing = expected - obs.anchors
+    summary = f"anchors {len(obs.anchors)}/{len(expected)}"
     return (not missing, summary)
 
 
-def check_blocks(world: World, blueprint: "Blueprint") -> tuple[bool, str]:
+def check_blocks(obs: "GtObservation", blueprint: "Blueprint") -> tuple[bool, str]:
     expected = set(blueprint.dome_floor_cells())
-    missing = expected - world.blocks
-    summary = f"blocks {len(world.blocks)}/{len(expected)}"
+    missing = expected - obs.blocks
+    summary = f"blocks {len(obs.blocks)}/{len(expected)}"
     return (not missing, summary)
 
 
-def check_airlock_docked(world: World, blueprint: "Blueprint") -> tuple[bool, str]:
-    return world.airlock_docked, f"docked={world.airlock_docked}"
+def check_airlock_docked(obs: "GtObservation", blueprint: "Blueprint") -> tuple[bool, str]:
+    return obs.airlock_docked, f"docked={obs.airlock_docked}"
 
 
-def check_pod_inflated(world: World, blueprint: "Blueprint") -> tuple[bool, str]:
-    pct = int(world.pod_inflation * 100)
-    return world.pod_inflation >= 0.999, f"inflated={pct}%"
+def check_pod_inflated(obs: "GtObservation", blueprint: "Blueprint") -> tuple[bool, str]:
+    pct = int(obs.pod_inflation * 100)
+    return obs.pod_inflation >= 0.999, f"inflated={pct}%"
 
 
 @dataclass(frozen=True)
@@ -76,7 +75,7 @@ class Goal:
     name: str
     label: str
     preconditions: tuple[str, ...]
-    is_done: Callable[[World, "Blueprint"], tuple[bool, str]]
+    is_done: Callable[["GtObservation", "Blueprint"], tuple[bool, str]]
 
 
 SITE_PREP = Goal(

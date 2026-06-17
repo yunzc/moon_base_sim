@@ -6,6 +6,7 @@ from typing import Optional
 import simpy
 from pydantic import BaseModel, ConfigDict
 
+from .sensors import Sensor
 from .world import World
 
 
@@ -77,7 +78,15 @@ class Robot:
     color: tuple[int, int, int] = (200, 200, 200)
     speed: float = 1.0
 
-    def __init__(self, rid: str, x: int, y: int, config: RobotConfig):
+    def __init__(
+        self,
+        rid: str,
+        x: int,
+        y: int,
+        config: RobotConfig,
+        world: World,
+        sensors: list[Sensor],
+    ):
         self.rid = rid
         self.x = x
         self.y = y
@@ -85,6 +94,10 @@ class Robot:
         self.speed = config.speed
         self.state = "idle"
         self.battery = 100.0
+        # The world the robot physically acts on (actuation), and the sensors
+        # mounted on it (perception, read by the autonomy — never the world).
+        self.world = world
+        self.sensors = sensors
 
     @property
     def pos(self) -> tuple[int, int]:
@@ -94,7 +107,7 @@ class Robot:
     def carrying(self) -> Optional[str]:
         return None
 
-    def step(self, env: simpy.Environment, world: World, direction: Direction):
+    def step(self, env: simpy.Environment, direction: Direction):
         """Move a single cell in one cardinal direction.
 
         The only movement primitive a robot has — it cannot jump to an
@@ -104,7 +117,7 @@ class Robot:
         """
         dx, dy = direction.value
         nx, ny = self.x + dx, self.y + dy
-        if not world.in_bounds(nx, ny):
+        if not self.world.in_bounds(nx, ny):
             return
         yield env.timeout(1.0 / max(self.speed, 0.1))
         self.x, self.y = nx, ny
@@ -117,45 +130,49 @@ class Loader(Robot):
 
     config: LoaderConfig
 
-    def __init__(self, rid: str, x: int, y: int, config: LoaderConfig):
-        super().__init__(rid, x, y, config)
+    def __init__(
+        self,
+        rid: str,
+        x: int,
+        y: int,
+        config: LoaderConfig,
+        world: World,
+        sensors: list[Sensor],
+    ):
+        super().__init__(rid, x, y, config, world, sensors)
         self.regolith = 0
 
     @property
     def carrying(self) -> Optional[str]:
         return f"reg×{self.regolith}" if self.regolith else None
 
-    def grade(self, env: simpy.Environment, world: World, cell: tuple[int, int]):
+    def grade(self, env: simpy.Environment, cell: tuple[int, int]):
         """Grade at the current location. Autonomy positions the loader first."""
         self.state = "grading"
         yield env.timeout(self.config.grade_time)
-        world.grade(*cell, self.config.grade_neighborhood)
+        self.world.grade(*cell, self.config.grade_neighborhood)
         self.state = "idle"
 
-    def excavate(self, env: simpy.Environment, world: World, cell: tuple[int, int]):
+    def excavate(self, env: simpy.Environment, cell: tuple[int, int]):
         if self.regolith >= self.config.loader_capacity:
             return
         self.state = "excavating"
         yield env.timeout(self.config.excavate_time)
-        world.excavate(*cell, self.config.excavate_depth_cm)
+        self.world.excavate(*cell, self.config.excavate_depth_cm)
         self.regolith += 1
         self.state = "idle"
 
-    def unload_ground(
-        self, env: simpy.Environment, world: World, cell: tuple[int, int]
-    ):
+    def unload_ground(self, env: simpy.Environment, cell: tuple[int, int]):
         if self.regolith == 0:
             return
         self.state = "unloading"
         yield env.timeout(self.config.unload_time)
         for _ in range(self.regolith):
-            world.deposit(*cell, self.config.deposit_height_cm)
+            self.world.deposit(*cell, self.config.deposit_height_cm)
         self.regolith = 0
         self.state = "idle"
 
-    def unload_into(
-        self, env: simpy.Environment, world: World, producer: "Producer"
-    ):
+    def unload_into(self, env: simpy.Environment, producer: "Producer"):
         if self.regolith == 0:
             return
         self.state = "feeding"
@@ -171,8 +188,16 @@ class Producer(Robot):
 
     config: ProducerConfig
 
-    def __init__(self, rid: str, x: int, y: int, config: ProducerConfig):
-        super().__init__(rid, x, y, config)
+    def __init__(
+        self,
+        rid: str,
+        x: int,
+        y: int,
+        config: ProducerConfig,
+        world: World,
+        sensors: list[Sensor],
+    ):
+        super().__init__(rid, x, y, config, world, sensors)
         self.regolith_inventory = 0
 
     @property
@@ -182,7 +207,6 @@ class Producer(Robot):
     def run(
         self,
         env: simpy.Environment,
-        world: World,
         block_store: simpy.Store,
         stop: simpy.Event,
     ):
@@ -207,8 +231,16 @@ class Assembler(Robot):
 
     config: AssemblerConfig
 
-    def __init__(self, rid: str, x: int, y: int, config: AssemblerConfig):
-        super().__init__(rid, x, y, config)
+    def __init__(
+        self,
+        rid: str,
+        x: int,
+        y: int,
+        config: AssemblerConfig,
+        world: World,
+        sensors: list[Sensor],
+    ):
+        super().__init__(rid, x, y, config, world, sensors)
         self._carrying: Optional[str] = None
 
     @property
@@ -223,24 +255,27 @@ class Assembler(Robot):
     def place(
         self,
         env: simpy.Environment,
-        world: World,
         target: tuple[int, int],
         place_time: float,
-        set_fn,
     ):
-        """Place the carried item at the current location."""
-        self.state = f"place_{self._carrying}"
+        """Install the carried item into the world at the current location."""
+        item = self._carrying
+        self.state = f"place_{item}"
         yield env.timeout(place_time)
-        set_fn(*target)
+        if item == "anchor":
+            self.world.set_anchor(*target)
+        elif item == "block":
+            self.world.set_block(*target)
+        elif item == "airlock":
+            self.world.airlock_docked = True
+            self.world.pod_deployed = True
         self._carrying = None
         self.state = "idle"
 
-    def inflate_pod(
-        self, env: simpy.Environment, world: World, duration: float
-    ):
+    def inflate_pod(self, env: simpy.Environment, duration: float):
         self.state = "inflating"
         steps = 60
         for i in range(steps):
-            world.pod_inflation = (i + 1) / steps
+            self.world.pod_inflation = (i + 1) / steps
             yield env.timeout(duration / steps)
         self.state = "idle"

@@ -1,8 +1,9 @@
 """Autonomy contract: state and the protocol implementations satisfy.
 
-Autonomies read world state, dispatch robot commands, and report progress on
-their own state object. The mission spec (blueprint, supervisor checks) lives
-in ``moon_base_sim.mission`` and is shared across all autonomies.
+Autonomies perceive the world only through robot-mounted sensors, dispatch
+robot commands, and report progress on their own state object. The mission spec
+(blueprint, supervisor checks) lives in ``moon_base_sim.mission`` and is shared
+across all autonomies.
 """
 from __future__ import annotations
 
@@ -34,7 +35,6 @@ class Autonomy(Protocol):
     def run(
         self,
         env: simpy.Environment,
-        world: World,
         fleet: list[Robot],
         blueprint: Blueprint,
     ) -> Generator: ...

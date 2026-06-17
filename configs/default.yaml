@@ -19,6 +19,10 @@ blueprint:
   min_foundation_depth_cm: 8.0
   elevation_tolerance_cm: 5.0
 
+sensors:
+  gt:
+    publish_hz: 2.0   # ground-truth sensor publishes every 0.5s
+
 layout:
   loader_depot: [2, 2]
   producer_sites: [[5, 35], [35, 35]]

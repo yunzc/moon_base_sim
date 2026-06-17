@@ -44,7 +44,7 @@ def run_headless(
     blueprint = Blueprint(config.blueprint)
     autonomy = load_autonomy(autonomy_name, config)
     fleet = autonomy.spawn_fleet(world)
-    env.process(autonomy.run(env, world, fleet, blueprint))
+    env.process(autonomy.run(env, fleet, blueprint))
     env.run(until=max_time)
     state = autonomy.state
     print(
@@ -65,7 +65,7 @@ def run_visual(config: Config, autonomy_name: str, seed: int) -> int:
     world = World.generate(config.world, seed=seed)
     blueprint = Blueprint(config.blueprint)
     fleet = autonomy.spawn_fleet(world)
-    env.process(autonomy.run(env, world, fleet, blueprint))
+    env.process(autonomy.run(env, fleet, blueprint))
     renderer = Renderer(world, fleet, autonomy, blueprint, config.sim)
 
     step = config.sim.sim_speed / config.sim.target_fps

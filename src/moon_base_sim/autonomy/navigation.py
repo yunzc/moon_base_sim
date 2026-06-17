@@ -12,7 +12,8 @@ from typing import Callable
 import simpy
 
 from ..sim.robots import Direction, Robot
-from ..sim.world import World
+from ..sim.sensors import GtObservation
+from .perception import gt_observation
 
 Coord = tuple[int, int]
 
@@ -25,13 +26,13 @@ def manhattan(a: Coord, b: Coord) -> int:
     return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
 
-def _passable(world: World, self_pos: Coord) -> Callable[[int, int], bool]:
+def _passable(obs: GtObservation, self_pos: Coord) -> Callable[[int, int], bool]:
     def ok(x: int, y: int) -> bool:
-        if not world.in_bounds(x, y):
+        if not obs.in_bounds(x, y):
             return False
         if (x, y) == self_pos:
             return True
-        return not world.occupancy[y][x]
+        return not obs.occupancy[y][x]
 
     return ok
 
@@ -82,24 +83,23 @@ def astar(
     return []
 
 
-def navigate(
-    env: simpy.Environment, world: World, robot: Robot, goal: Coord
-):
+def navigate(env: simpy.Environment, robot: Robot, goal: Coord):
     """Walk `robot` to `goal` one cardinal step at a time, re-planning each cell.
 
-    Drives the robot purely through its `step` primitive: A* picks the next
-    cell, this converts the delta to a `Direction`, and the robot moves. Waits
-    in place when blocked by a dynamic obstacle, mirroring the previous
-    in-robot `move_to` behavior.
+    Plans from the robot's latest *perceived* observation (not ground truth):
+    A* picks the next cell, this converts the delta to a `Direction`, and the
+    robot moves. Waits in place when blocked. Re-sensing each step keeps the
+    obstacle data fresh, subject to the sensor's publish-rate latency.
     """
     while robot.pos != goal:
-        path = astar(robot.pos, goal, _passable(world, robot.pos))
+        obs = gt_observation(robot)
+        path = astar(robot.pos, goal, _passable(obs, robot.pos))
         if not path or len(path) < 2:
             yield env.timeout(0.5)
             continue
         nx, ny = path[1]
-        if world.is_blocked(nx, ny) and (nx, ny) != goal:
+        if obs.is_blocked(nx, ny) and (nx, ny) != goal:
             yield env.timeout(0.2)
             continue
         direction = _DELTA_TO_DIR[(nx - robot.x, ny - robot.y)]
-        yield from robot.step(env, world, direction)
+        yield from robot.step(env, direction)
