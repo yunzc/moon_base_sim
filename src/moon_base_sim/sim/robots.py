@@ -10,33 +10,55 @@ from .world import World
 
 
 class RobotConfig(BaseModel):
-    """Fleet composition, movement speeds, action durations, and work amounts."""
+    """Base config shared by every robot — movement speed."""
 
     model_config = ConfigDict(frozen=True)
 
-    num_loaders: int = 3
-    num_producers: int = 2
-    num_assemblers: int = 2
+    speed: float
 
-    loader_speed: float = 1.0
-    producer_speed: float = 0.5
-    assembler_speed: float = 0.8
 
-    grade_time: float = 2.0
-    excavate_time: float = 1.0
-    unload_time: float = 1.0
-    produce_time: float = 6.0
-    anchor_drive_time: float = 4.0
-    block_place_time: float = 3.0
-    dock_time: float = 8.0
-    inflate_time: float = 6.0
+class LoaderConfig(RobotConfig):
+    """Per-loader movement speed, action durations, and work amounts."""
 
-    loader_capacity: int = 4
-    regolith_per_block: int = 3
+    grade_time: float
+    excavate_time: float
+    unload_time: float
 
-    grade_neighborhood: int = 1
-    excavate_depth_cm: float = 10.0
-    deposit_height_cm: float = 10.0
+    loader_capacity: int
+
+    grade_neighborhood: int
+    excavate_depth_cm: float
+    deposit_height_cm: float
+
+
+class ProducerConfig(RobotConfig):
+    """Per-producer movement speed and block-production parameters."""
+
+    produce_time: float
+    regolith_per_block: int
+
+
+class AssemblerConfig(RobotConfig):
+    """Per-assembler movement speed and placement/docking durations."""
+
+    anchor_drive_time: float
+    block_place_time: float
+    dock_time: float
+    inflate_time: float
+
+
+class RobotsConfig(BaseModel):
+    """Fleet composition — one config per robot, grouped by kind.
+
+    Composition is explicit: callers must supply the per-robot configs. The
+    fleet size is the length of each list.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    loaders: list[LoaderConfig]
+    producers: list[ProducerConfig]
+    assemblers: list[AssemblerConfig]
 
 
 def _passable(world: World, self_pos: tuple[int, int]):
@@ -62,6 +84,7 @@ class Robot:
         self.x = x
         self.y = y
         self.config = config
+        self.speed = config.speed
         self.state = "idle"
         self.battery = 100.0
 
@@ -92,9 +115,10 @@ class Loader(Robot):
     kind = "loader"
     color = (240, 180, 60)
 
-    def __init__(self, rid: str, x: int, y: int, config: RobotConfig):
+    config: LoaderConfig
+
+    def __init__(self, rid: str, x: int, y: int, config: LoaderConfig):
         super().__init__(rid, x, y, config)
-        self.speed = config.loader_speed
         self.regolith = 0
 
     @property
@@ -148,9 +172,10 @@ class Producer(Robot):
     kind = "producer"
     color = (120, 200, 240)
 
-    def __init__(self, rid: str, x: int, y: int, config: RobotConfig):
+    config: ProducerConfig
+
+    def __init__(self, rid: str, x: int, y: int, config: ProducerConfig):
         super().__init__(rid, x, y, config)
-        self.speed = config.producer_speed
         self.regolith_inventory = 0
 
     @property
@@ -183,9 +208,10 @@ class Assembler(Robot):
     kind = "assembler"
     color = (220, 120, 220)
 
-    def __init__(self, rid: str, x: int, y: int, config: RobotConfig):
+    config: AssemblerConfig
+
+    def __init__(self, rid: str, x: int, y: int, config: AssemblerConfig):
         super().__init__(rid, x, y, config)
-        self.speed = config.assembler_speed
         self._carrying: Optional[str] = None
 
     @property

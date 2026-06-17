@@ -2,14 +2,7 @@ from __future__ import annotations
 
 import simpy
 
-from ...sim.config import (
-    ASSEMBLER_DEPOT,
-    CONFIG,
-    LOADER_DEPOT,
-    PRODUCER_SITES,
-    REGOLITH_PITS,
-    SPOIL_SITE,
-)
+from ...sim.config import LayoutConfig
 from ...mission.blueprint import Blueprint
 from ...mission.goals import (
     AIRLOCK_DOCKED,
@@ -19,7 +12,7 @@ from ...mission.goals import (
     SITE_PREP,
     Goal,
 )
-from ...sim.robots import Assembler, Loader, Producer, Robot, RobotConfig
+from ...sim.robots import Assembler, Loader, Producer, Robot, RobotsConfig
 from ...sim.world import World
 from ..base import AutonomyState
 
@@ -34,17 +27,20 @@ def _record(
     return ok, reason
 
 
-def spawn_fleet(world: World, config: RobotConfig | None = None) -> list[Robot]:
-    config = config or RobotConfig()
+def spawn_fleet(
+    world: World, config: RobotsConfig, layout: LayoutConfig
+) -> list[Robot]:
     fleet: list[Robot] = []
-    lx, ly = LOADER_DEPOT
-    for i in range(config.num_loaders):
-        fleet.append(Loader(f"L{i}", lx + i, ly, config))
-    for i, (px, py) in enumerate(PRODUCER_SITES[: config.num_producers]):
-        fleet.append(Producer(f"P{i}", px, py, config))
-    ax, ay = ASSEMBLER_DEPOT
-    for i in range(config.num_assemblers):
-        fleet.append(Assembler(f"A{i}", ax - i, ay, config))
+    lx, ly = layout.loader_depot
+    for i, loader_config in enumerate(config.loaders):
+        fleet.append(Loader(f"L{i}", lx + i, ly, loader_config))
+    for i, (producer_config, (px, py)) in enumerate(
+        zip(config.producers, layout.producer_sites)
+    ):
+        fleet.append(Producer(f"P{i}", px, py, producer_config))
+    ax, ay = layout.assembler_depot
+    for i, assembler_config in enumerate(config.assemblers):
+        fleet.append(Assembler(f"A{i}", ax - i, ay, assembler_config))
     return fleet
 
 
@@ -59,15 +55,16 @@ def _loader_dig_loop(
     loader: Loader,
     targets: simpy.Store,
     done: simpy.Event,
+    spoil_site: tuple[int, int],
 ):
     while True:
         if loader.regolith >= loader.config.loader_capacity:
-            yield env.process(loader.unload_ground(env, world, SPOIL_SITE))
+            yield env.process(loader.unload_ground(env, world, spoil_site))
             continue
         if not targets.items:
             if done.triggered:
                 if loader.regolith > 0:
-                    yield env.process(loader.unload_ground(env, world, SPOIL_SITE))
+                    yield env.process(loader.unload_ground(env, world, spoil_site))
                 return
             yield env.timeout(0.2)
             continue
@@ -111,9 +108,10 @@ def _loader_supply_loop(
     loader: Loader,
     producers: list[Producer],
     done: simpy.Event,
+    regolith_pits: list[tuple[int, int]],
 ):
     while not done.triggered:
-        pit = _nearest(REGOLITH_PITS, loader.pos)
+        pit = _nearest(regolith_pits, loader.pos)
         while loader.regolith < loader.config.loader_capacity and not done.triggered:
             yield env.process(loader.excavate(env, world, pit))
         if done.triggered:
@@ -128,6 +126,7 @@ def _assembler_anchor_loop(
     assembler: Assembler,
     queue: simpy.Store,
     done: simpy.Event,
+    assembler_depot: tuple[int, int],
 ):
     while True:
         if not queue.items:
@@ -142,7 +141,7 @@ def _assembler_anchor_loop(
             assembler.fetch_and_place(
                 env,
                 world,
-                ASSEMBLER_DEPOT,
+                assembler_depot,
                 cell,
                 "anchor",
                 assembler.config.anchor_drive_time,
@@ -195,6 +194,7 @@ def run_mission(
     fleet: list[Robot],
     state: AutonomyState,
     blueprint: Blueprint,
+    layout: LayoutConfig,
 ):
     loaders = [r for r in fleet if isinstance(r, Loader)]
     producers = [r for r in fleet if isinstance(r, Producer)]
@@ -209,7 +209,11 @@ def run_mission(
         yield dig_targets.put(cell)
     dig_done = env.event()
     for ld in loaders:
-        env.process(_loader_dig_loop(env, world, ld, dig_targets, dig_done))
+        env.process(
+            _loader_dig_loop(
+                env, world, ld, dig_targets, dig_done, layout.spoil_site
+            )
+        )
     while dig_targets.items or any(ld.state != "idle" for ld in loaders):
         yield env.timeout(1.0)
     dig_done.succeed()
@@ -238,8 +242,12 @@ def run_mission(
     anchors_done = env.event()
 
     for a in assemblers:
-        env.process(_assembler_anchor_loop(env, world, a, anchor_queue, anchors_done))
-    while len(world.anchors) < CONFIG.num_anchors:
+        env.process(
+            _assembler_anchor_loop(
+                env, world, a, anchor_queue, anchors_done, layout.assembler_depot
+            )
+        )
+    while len(world.anchors) < blueprint.config.num_anchors:
         yield env.timeout(1.0)
     anchors_done.succeed()
     _record(state, world, blueprint, ANCHORS)
@@ -257,7 +265,11 @@ def run_mission(
     for p in producers:
         env.process(p.run(env, world, block_store, stop_production))
     for ld in loaders:
-        env.process(_loader_supply_loop(env, world, ld, producers, stop_production))
+        env.process(
+            _loader_supply_loop(
+                env, world, ld, producers, stop_production, layout.regolith_pits
+            )
+        )
     for a in assemblers:
         env.process(
             _assembler_block_loop(
@@ -276,7 +288,9 @@ def run_mission(
     state.current_activity = "Docking airlock"
     docker = assemblers[0]
     yield env.process(
-        docker.dock_airlock(env, world, ASSEMBLER_DEPOT, blueprint.airlock_cell())
+        docker.dock_airlock(
+            env, world, layout.assembler_depot, blueprint.airlock_cell()
+        )
     )
     _record(state, world, blueprint, AIRLOCK_DOCKED)
 

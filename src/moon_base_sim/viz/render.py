@@ -5,7 +5,7 @@ import pygame
 from ..autonomy import Autonomy
 from ..mission.blueprint import Blueprint
 from ..mission.goals import GOALS
-from ..sim.config import CONFIG
+from ..sim.config import SimConfig
 from ..sim.robots import Robot
 from ..sim.world import World
 
@@ -28,6 +28,7 @@ class Renderer:
         fleet: list[Robot],
         autonomy: Autonomy,
         blueprint: Blueprint,
+        sim: SimConfig,
     ):
         pygame.init()
         pygame.display.set_caption("moon_base_sim")
@@ -35,7 +36,8 @@ class Renderer:
         self.fleet = fleet
         self.autonomy = autonomy
         self.blueprint = blueprint
-        self.cell = CONFIG.cell_size
+        self.sim = sim
+        self.cell = sim.cell_size
         self.panel_w = 340
         self.w = world.w * self.cell + self.panel_w
         self.h = world.h * self.cell
@@ -65,13 +67,13 @@ class Renderer:
         self._draw_panel(sim_time)
         self._draw_colorbar()
         pygame.display.flip()
-        self.clock.tick(CONFIG.target_fps)
+        self.clock.tick(self.sim.target_fps)
         return True
 
     def _draw_terrain(self) -> None:
         foundation = set(self.blueprint.foundation_cells(self.world))
         f_mean = self.blueprint.foundation_mean_elevation(self.world)
-        tol = CONFIG.elevation_tolerance_cm
+        tol = self.blueprint.config.elevation_tolerance_cm
         for y in range(self.world.h):
             for x in range(self.world.w):
                 e = self.world.elevation[y][x]
@@ -142,7 +144,9 @@ class Renderer:
 
         line(f"t = {sim_time:6.1f}s")
         line(f"Foundation dev : {self.blueprint.foundation_variance_cm(self.world):5.2f} cm")
-        line(f"Anchors        : {len(self.world.anchors)} / {CONFIG.num_anchors}")
+        line(
+            f"Anchors        : {len(self.world.anchors)} / {self.blueprint.config.num_anchors}"
+        )
         line(
             f"Blocks placed  : {len(self.world.blocks)} / {len(self.blueprint.dome_floor_cells())}"
         )

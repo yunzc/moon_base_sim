@@ -11,7 +11,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
 
-from ..sim.config import CONFIG
 from ..sim.world import World
 
 if TYPE_CHECKING:
@@ -38,11 +37,12 @@ def check_site_prep(world: World, blueprint: "Blueprint") -> tuple[bool, str]:
     flatness = sum(abs(v - f_mean) for v in f_vals) / len(f_vals)
 
     summary = f"depth={depth:.1f}cm flat={flatness:.1f}cm"
+    cfg = blueprint.config
     issues: list[str] = []
-    if depth < CONFIG.min_foundation_depth_cm:
-        issues.append(f"need ≥{CONFIG.min_foundation_depth_cm:.0f}cm deep")
-    if flatness > CONFIG.elevation_tolerance_cm:
-        issues.append(f"need ≤{CONFIG.elevation_tolerance_cm:.0f}cm rough")
+    if depth < cfg.min_foundation_depth_cm:
+        issues.append(f"need ≥{cfg.min_foundation_depth_cm:.0f}cm deep")
+    if flatness > cfg.elevation_tolerance_cm:
+        issues.append(f"need ≤{cfg.elevation_tolerance_cm:.0f}cm rough")
     if issues:
         return False, summary + " | " + ", ".join(issues)
     return True, summary

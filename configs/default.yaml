@@ -1,0 +1,39 @@
+# Default moon_base_sim configuration.
+
+sim:
+  cell_size: 16
+  sim_speed: 20.0
+  target_fps: 30
+
+world:
+  grid_w: 40
+  grid_h: 40
+  elevation_min_cm: -15.0
+  elevation_max_cm: 15.0
+
+blueprint:
+  pod_center: [20, 20]
+  dome_radius: 6
+  berm_radius: 10
+  num_anchors: 8
+  min_foundation_depth_cm: 8.0
+  elevation_tolerance_cm: 5.0
+
+layout:
+  loader_depot: [2, 2]
+  producer_sites: [[5, 35], [35, 35]]
+  assembler_depot: [37, 5]
+  regolith_pits: [[8, 35], [32, 35]]
+  spoil_site: [5, 5]
+
+robots:
+  loaders:
+    - { speed: 1.0, grade_time: 2.0, excavate_time: 1.0, unload_time: 1.0, loader_capacity: 4, grade_neighborhood: 1, excavate_depth_cm: 10.0, deposit_height_cm: 10.0 }
+    - { speed: 1.0, grade_time: 2.0, excavate_time: 1.0, unload_time: 1.0, loader_capacity: 4, grade_neighborhood: 1, excavate_depth_cm: 10.0, deposit_height_cm: 10.0 }
+    - { speed: 1.0, grade_time: 2.0, excavate_time: 1.0, unload_time: 1.0, loader_capacity: 4, grade_neighborhood: 1, excavate_depth_cm: 10.0, deposit_height_cm: 10.0 }
+  producers:
+    - { speed: 0.5, produce_time: 6.0, regolith_per_block: 3 }
+    - { speed: 0.5, produce_time: 6.0, regolith_per_block: 3 }
+  assemblers:
+    - { speed: 0.8, anchor_drive_time: 4.0, block_place_time: 3.0, dock_time: 8.0, inflate_time: 6.0 }
+    - { speed: 0.8, anchor_drive_time: 4.0, block_place_time: 3.0, dock_time: 8.0, inflate_time: 6.0 }

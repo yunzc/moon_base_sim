@@ -6,27 +6,29 @@ from typing import TYPE_CHECKING, Iterable
 import numpy as np
 from pydantic import BaseModel, ConfigDict
 
-from ..sim.config import CONFIG
-
 if TYPE_CHECKING:
     from ..sim.world import World
 
 
 class BlueprintConfig(BaseModel):
-    """Geometry of the base footprint placed on the world grid."""
+    """Geometry and acceptance criteria of the base footprint on the grid."""
 
     model_config = ConfigDict(frozen=True)
 
-    pod_center: tuple[int, int] = (20, 20)
-    dome_radius: int = 6
-    berm_radius: int = 10
+    pod_center: tuple[int, int]
+    dome_radius: int
+    berm_radius: int
+    num_anchors: int
+
+    min_foundation_depth_cm: float
+    elevation_tolerance_cm: float
 
 
 class Blueprint:
     """The base footprint on the world grid, derived from a ``BlueprintConfig``."""
 
-    def __init__(self, config: BlueprintConfig | None = None):
-        self.config = config or BlueprintConfig()
+    def __init__(self, config: BlueprintConfig):
+        self.config = config
 
     @property
     def pod_center(self) -> tuple[int, int]:
@@ -64,7 +66,7 @@ class Blueprint:
     def anchor_cells(self) -> list[tuple[int, int]]:
         """Anchor spike locations around the deflated Pod perimeter."""
         cx, cy = self.config.pod_center
-        n = CONFIG.num_anchors
+        n = self.config.num_anchors
         r = self.config.dome_radius - 2
         out: list[tuple[int, int]] = []
         for i in range(n):

@@ -11,11 +11,11 @@ class WorldConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    grid_w: int = 40
-    grid_h: int = 40
+    grid_w: int
+    grid_h: int
 
-    elevation_min_cm: float = -15.0
-    elevation_max_cm: float = 15.0
+    elevation_min_cm: float
+    elevation_max_cm: float
 
 
 @dataclass
@@ -24,7 +24,7 @@ class World:
 
     w: int
     h: int
-    config: WorldConfig = field(default_factory=WorldConfig)
+    config: WorldConfig
     elevation: np.ndarray = field(default_factory=lambda: np.empty((0, 0)))
     occupancy: np.ndarray = field(default_factory=lambda: np.empty((0, 0), dtype=bool))
     blocks: set[tuple[int, int]] = field(default_factory=set)
@@ -34,8 +34,7 @@ class World:
     airlock_docked: bool = False
 
     @classmethod
-    def generate(cls, seed: int = 0, config: WorldConfig | None = None) -> "World":
-        config = config or WorldConfig()
+    def generate(cls, config: WorldConfig, seed: int = 0) -> "World":
         rng = np.random.default_rng(seed)
         w, h = config.grid_w, config.grid_h
         elevation = rng.uniform(

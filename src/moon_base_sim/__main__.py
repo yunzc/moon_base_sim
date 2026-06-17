@@ -14,12 +14,13 @@ import simpy
 from .autonomy import AutonomyState, load_autonomy
 from .mission.blueprint import Blueprint
 from .mission.goals import GOALS
-from .sim.config import CONFIG
+from .sim.config import Config, load_config
 from .sim.world import World
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
+    p.add_argument("--config", required=True, help="path to a config YAML file")
     p.add_argument("--headless", action="store_true")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--max-time", type=float, default=10_000.0)
@@ -35,11 +36,13 @@ def _goals_done(state: AutonomyState) -> int:
     return sum(1 for g in GOALS if state.goal_status.get(g.name, (False, ""))[0])
 
 
-def run_headless(autonomy_name: str, seed: int, max_time: float) -> int:
+def run_headless(
+    config: Config, autonomy_name: str, seed: int, max_time: float
+) -> int:
     env = simpy.Environment()
-    world = World.generate(seed=seed)
-    blueprint = Blueprint()
-    autonomy = load_autonomy(autonomy_name)
+    world = World.generate(config.world, seed=seed)
+    blueprint = Blueprint(config.blueprint)
+    autonomy = load_autonomy(autonomy_name, config)
     fleet = autonomy.spawn_fleet(world)
     env.process(autonomy.run(env, world, fleet, blueprint))
     env.run(until=max_time)
@@ -54,18 +57,18 @@ def run_headless(autonomy_name: str, seed: int, max_time: float) -> int:
     return 0 if _mission_done(state) else 1
 
 
-def run_visual(autonomy_name: str, seed: int) -> int:
-    autonomy = load_autonomy(autonomy_name)
+def run_visual(config: Config, autonomy_name: str, seed: int) -> int:
+    autonomy = load_autonomy(autonomy_name, config)
     from .viz.render import Renderer
 
     env = simpy.Environment()
-    world = World.generate(seed=seed)
-    blueprint = Blueprint()
+    world = World.generate(config.world, seed=seed)
+    blueprint = Blueprint(config.blueprint)
     fleet = autonomy.spawn_fleet(world)
     env.process(autonomy.run(env, world, fleet, blueprint))
-    renderer = Renderer(world, fleet, autonomy, blueprint)
+    renderer = Renderer(world, fleet, autonomy, blueprint, config.sim)
 
-    step = CONFIG.sim_speed / CONFIG.target_fps
+    step = config.sim.sim_speed / config.sim.target_fps
     running = True
     while running:
         try:
@@ -83,9 +86,12 @@ def run_visual(autonomy_name: str, seed: int) -> int:
 
 def main() -> None:
     args = parse_args()
+    config = load_config(args.config)
     if args.headless:
-        raise SystemExit(run_headless(args.autonomy, args.seed, args.max_time))
-    raise SystemExit(run_visual(args.autonomy, args.seed))
+        raise SystemExit(
+            run_headless(config, args.autonomy, args.seed, args.max_time)
+        )
+    raise SystemExit(run_visual(config, args.autonomy, args.seed))
 
 
 if __name__ == "__main__":

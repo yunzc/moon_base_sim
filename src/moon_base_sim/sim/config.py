@@ -1,24 +1,51 @@
-from dataclasses import dataclass, field
+from __future__ import annotations
+
+from pathlib import Path
+
+import yaml
+from pydantic import BaseModel, ConfigDict
+
+from ..mission.blueprint import BlueprintConfig
+from .robots import RobotsConfig
+from .world import WorldConfig
 
 
-@dataclass(frozen=True)
-class SimConfig:
-    cell_size: int = 16
+class SimConfig(BaseModel):
+    """Runtime and presentation parameters."""
 
-    num_anchors: int = 8
+    model_config = ConfigDict(frozen=True)
 
-    elevation_tolerance_cm: float = 5.0
-    min_foundation_depth_cm: float = 8.0
-    dock_tolerance_mm: float = 1.0
-
-    sim_speed: float = 20.0
-    target_fps: int = 30
+    cell_size: int
+    sim_speed: float
+    target_fps: int
 
 
-CONFIG = SimConfig()
+class LayoutConfig(BaseModel):
+    """Fixed site positions the baseline autonomy drives robots between."""
 
-LOADER_DEPOT = (2, 2)
-PRODUCER_SITES: list[tuple[int, int]] = [(5, 35), (35, 35)]
-ASSEMBLER_DEPOT = (37, 5)
-REGOLITH_PITS: list[tuple[int, int]] = [(8, 35), (32, 35)]
-SPOIL_SITE = (5, 5)
+    model_config = ConfigDict(frozen=True)
+
+    loader_depot: tuple[int, int]
+    producer_sites: list[tuple[int, int]]
+    assembler_depot: tuple[int, int]
+    regolith_pits: list[tuple[int, int]]
+    spoil_site: tuple[int, int]
+
+
+class Config(BaseModel):
+    """Root configuration — every domain config, loaded from a YAML file."""
+
+    model_config = ConfigDict(frozen=True)
+
+    sim: SimConfig
+    world: WorldConfig
+    blueprint: BlueprintConfig
+    robots: RobotsConfig
+    layout: LayoutConfig
+
+
+def load_config(path: str | Path) -> Config:
+    """Parse a YAML file into a fully-specified :class:`Config`."""
+    with open(path) as f:
+        data = yaml.safe_load(f)
+    return Config.model_validate(data)
