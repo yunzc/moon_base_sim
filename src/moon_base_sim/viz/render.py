@@ -143,14 +143,6 @@ class Renderer:
             y += surf.get_height() + 4
 
         line(f"t = {sim_time:6.1f}s")
-        line(f"Foundation dev : {self.blueprint.foundation_variance_cm(self.world):5.2f} cm")
-        line(
-            f"Anchors        : {len(self.world.anchors)} / {self.blueprint.config.num_anchors}"
-        )
-        line(
-            f"Blocks placed  : {len(self.world.blocks)} / {len(self.blueprint.dome_floor_cells())}"
-        )
-        line(f"Airlock docked : {self.world.airlock_docked}")
         line("")
         line(f"Now: {self.autonomy.state.current_activity}", self.big)
         line("Goals:", self.big)
@@ -167,7 +159,8 @@ class Renderer:
         for r in self.fleet:
             line(f" {r.rid} {r.kind:9s} {r.state:10s} {r.battery:4.0f}%")
 
-        self._draw_legend(x0)
+        line("")
+        self._draw_legend(x0, y)
 
     def _draw_colorbar(self) -> None:
         bar_w = 18
@@ -203,7 +196,7 @@ class Renderer:
             )
             self.screen.blit(surf, (x + bar_w + 6, ty - surf.get_height() // 2))
 
-    def _draw_legend(self, x0: int) -> None:
+    def _draw_legend(self, x0: int, y: int) -> None:
         from ..sim.robots import Assembler, Loader, Producer
 
         entries: list[tuple[str, tuple[int, int, int], str]] = [
@@ -218,8 +211,6 @@ class Renderer:
         ]
         line_h = self.font.get_height() + 4
         sw = 14  # swatch size
-        block_h = self.big.get_height() + 6 + len(entries) * line_h
-        y = self.h - block_h - 8
 
         title = self.big.render("Legend", True, TEXT)
         self.screen.blit(title, (x0, y))
