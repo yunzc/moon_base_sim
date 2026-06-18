@@ -38,9 +38,9 @@ layout:
 
 robots:
   loaders:
-    - { speed: 1.0, grade_time: 2.0, excavate_time: 1.0, unload_time: 1.0, loader_capacity: 4, grade_neighborhood: 1, excavate_depth_cm: 10.0, deposit_height_cm: 10.0 }
-    - { speed: 1.0, grade_time: 2.0, excavate_time: 1.0, unload_time: 1.0, loader_capacity: 4, grade_neighborhood: 1, excavate_depth_cm: 10.0, deposit_height_cm: 10.0 }
-    - { speed: 1.0, grade_time: 2.0, excavate_time: 1.0, unload_time: 1.0, loader_capacity: 4, grade_neighborhood: 1, excavate_depth_cm: 10.0, deposit_height_cm: 10.0 }
+    - { speed: 1.0, grade_time: 2.0, excavate_time: 1.0, unload_time: 1.0, loader_capacity: 4, grade_neighborhood: 1, excavate_depth_m: 0.10, deposit_height_m: 0.10 }
+    - { speed: 1.0, grade_time: 2.0, excavate_time: 1.0, unload_time: 1.0, loader_capacity: 4, grade_neighborhood: 1, excavate_depth_m: 0.10, deposit_height_m: 0.10 }
+    - { speed: 1.0, grade_time: 2.0, excavate_time: 1.0, unload_time: 1.0, loader_capacity: 4, grade_neighborhood: 1, excavate_depth_m: 0.10, deposit_height_m: 0.10 }
   producers:
     - { speed: 0.5, produce_time: 6.0, regolith_per_block: 3 }
     - { speed: 0.5, produce_time: 6.0, regolith_per_block: 3 }

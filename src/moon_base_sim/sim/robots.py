@@ -39,8 +39,8 @@ class LoaderConfig(RobotConfig):
     loader_capacity: int
 
     grade_neighborhood: int
-    excavate_depth_cm: float
-    deposit_height_cm: float
+    excavate_depth_m: float
+    deposit_height_m: float
 
 
 class ProducerConfig(RobotConfig):
@@ -195,7 +195,7 @@ class Loader(Robot):
             return
         self.state = "excavating"
         yield self._env.timeout(self.config.excavate_time)
-        self.world.excavate(*cell, self.config.excavate_depth_cm)
+        self.world.excavate(*cell, self.config.excavate_depth_m)
         self.regolith += 1
 
     def _do_unload_ground(self, cell: tuple[int, int]):
@@ -204,7 +204,7 @@ class Loader(Robot):
         self.state = "unloading"
         yield self._env.timeout(self.config.unload_time)
         for _ in range(self.regolith):
-            self.world.deposit(*cell, self.config.deposit_height_cm)
+            self.world.deposit(*cell, self.config.deposit_height_m)
         self.regolith = 0
 
     def _do_feed(self, producer_rid: str):
