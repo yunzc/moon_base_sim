@@ -181,8 +181,9 @@ class Renderer:
             line(f" {goal.label} {mark} {reason}")
         line("")
         line("Fleet:", self.big)
+        line(f" {'id':<2} {'type':<9} {'status':<10} {'bat':>4}")
         for r in self.fleet:
-            line(f" {r.rid} {r.kind:9s} {r.state:10s} {r.battery:4.0f}%")
+            line(f" {r.rid:<2} {r.kind:9s} {r.state:10s} {r.battery:4.0f}%")
 
         line("")
         self._draw_legend(x0, y)
