@@ -5,9 +5,11 @@ robots excavates terrain, sinters regolith into blocks, and assembles a shielded
 habitat — all on a top-down grid, advanced by a SimPy clock and watchable through
 a Pygame view.
 
-This document covers the **simulator** (the world the robots live in) and the
-**mission spec** (the blueprint geometry and the goals that define "done"). The
-control layer that drives the robots is documented separately.
+The **sim** runs as a standalone service; an **autonomy** is a separate process that
+connects over zmq to drive the fleet (see §3 Running and §4 Build your own autonomy).
+This document covers the **simulator** (the world the robots live in), the **mission
+spec** (blueprint geometry and the goals that define "done"), and the **pub/sub
+contract** an autonomy talks to.
 
 ---
 
@@ -138,11 +140,86 @@ however the preconditions allow.
 
 ## 3. Running
 
+The sim and the autonomy are **separate processes** that talk over zmq. Start the
+sim first (it runs free, robots idle, until a client connects), then the autonomy:
+
 ```bash
-# Top-down Pygame view
+# Terminal 1 — the sim service (real-time, Pygame view; --headless for no window)
 uv run python -m moon_base_sim --config configs/default.yaml
 
-# Headless (no window), with a time budget and fixed terrain seed
-uv run python -m moon_base_sim --config configs/default.yaml --headless \
-    --seed 0 --max-time 30000
+# Terminal 2 — an autonomy that connects and drives the fleet
+uv run python -m moon_base_sim.autonomy --config configs/default.yaml
 ```
+
+The sim paces sim-time to wall-time by `comms.factor` (wall-seconds per sim-second;
+`--factor` overrides). You can stop and restart the autonomy at any time — the sim
+keeps running and re-attaches. Socket addresses come from `comms.{telemetry_addr,
+command_addr}` (`--telemetry` / `--commands` override).
+
+---
+
+## 4. Build your own autonomy
+
+An autonomy is any process that subscribes to the sim's telemetry and publishes
+commands. The baseline (`autonomy/baseline/policy.py`) is the reference
+implementation; the wire contract is below.
+
+### Wiring (zmq, pickled payloads)
+
+| Channel    | Sim socket        | Autonomy socket    | Carries |
+| ---------- | ----------------- | ------------------ | ------- |
+| telemetry  | **PUB** (bind `telemetry_addr`) | **SUB** (connect) | `(topic, message)` |
+| commands   | **PULL** (bind `command_addr`)  | **PUSH** (connect) | `Command` |
+
+Messages are pickled Python objects (`comms/messages.py`). The `comms.transport`
+helpers (`SimEndpoint`, `AutonomyEndpoint`) wrap the sockets; the reusable client
+harness in `autonomy/client.py` builds a world `Model` and runs any policy.
+
+### Telemetry topics & messages
+
+| Topic    | Message        | When | Key fields |
+| -------- | -------------- | ---- | ---------- |
+| `obs`    | `GtObservation` | each sensor period (`sensors.gt.publish_hz`) | `w,h, elevation, occupancy, anchors, blocks, airlock_docked, pod_inflation` |
+| `status` | `RobotStatus`   | per robot, on every state change + heartbeat | `rid, kind, pos, is_idle, carrying, regolith, regolith_inventory, done_seq, t` |
+| `blocks` | `BlockReady`    | when a producer finishes a block | `producer_rid, coord, t` |
+
+### Commands (`Command(rid, seq, verb, args)`)
+
+| verb            | args             | effect |
+| --------------- | ---------------- | ------ |
+| `step`          | `("up"\|"down"\|"left"\|"right",)` | move one cell |
+| `excavate`/`grade`/`unload_ground` | `(cell,)` | loader acts at its current cell |
+| `feed`          | `(producer_rid,)` | loader unloads cargo into a producer |
+| `pickup`        | `(item,)`        | assembler grabs `"anchor"\|"block"\|"airlock"` |
+| `place`         | `(cell,)`        | assembler installs the carried item |
+| `produce`       | `()`             | producer converts feedstock into a block |
+| `inflate`       | `()`             | assembler inflates the pod |
+
+### Contract an autonomy must honor
+
+- Build a world/fleet model from telemetry; address robots by `rid`. Robots are
+  dumb — **pathfinding is yours** (issue one `step` at a time toward a goal).
+- **One outstanding command per robot.** Each `Command` carries an incrementing
+  `seq`; a robot echoes the last finished `done_seq` in `status`. A robot is ready
+  for its next command when `done_seq == the last seq you sent it`.
+- Claim produced blocks locally from the `blocks` stream (you are the only consumer).
+- The sim runs whether or not you are connected; expect to join late and miss nothing
+  durable (telemetry is periodic state).
+
+### Minimal client
+
+```python
+from moon_base_sim.comms import AutonomyEndpoint, STATUS, Command
+
+ep = AutonomyEndpoint("tcp://127.0.0.1:5555", "tcp://127.0.0.1:5556")
+seq = {}
+while True:
+    for topic, msg in ep.poll(50):
+        if topic == STATUS and msg.kind == "loader" and msg.done_seq == seq.get(msg.rid, 0):
+            seq[msg.rid] = seq.get(msg.rid, 0) + 1
+            ep.send(Command(msg.rid, seq[msg.rid], "step", ("right",)))   # crawl east
+```
+
+Register a full policy class (with `decide(model) -> [Command]` and
+`mission_done(model)`) in `autonomy/__init__.py`'s `_REGISTRY` and select it with
+`--autonomy <name>`.

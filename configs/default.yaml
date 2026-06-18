@@ -6,6 +6,11 @@ sim:
   target_fps: 30
   tick: 0.5
 
+comms:
+  factor: 0.02                        # wall-seconds per sim-second (~50x real-time)
+  telemetry_addr: tcp://127.0.0.1:5555
+  command_addr: tcp://127.0.0.1:5556
+
 world:
   grid_w: 40
   grid_h: 40

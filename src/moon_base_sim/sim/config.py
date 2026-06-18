@@ -34,6 +34,16 @@ class LayoutConfig(BaseModel):
     spoil_site: tuple[int, int]
 
 
+class CommsConfig(BaseModel):
+    """Real-time pacing + zmq addresses for the sim/autonomy split."""
+
+    model_config = ConfigDict(frozen=True)
+
+    factor: float          # wall-seconds per sim-second (RealtimeEnvironment)
+    telemetry_addr: str    # sim PUB / autonomy SUB
+    command_addr: str      # autonomy PUSH / sim PULL
+
+
 class Config(BaseModel):
     """Root configuration — every domain config, loaded from a YAML file."""
 
@@ -45,6 +55,7 @@ class Config(BaseModel):
     robots: RobotsConfig
     layout: LayoutConfig
     sensors: SensorsConfig
+    comms: CommsConfig
 
 
 def load_config(path: str | Path) -> Config:

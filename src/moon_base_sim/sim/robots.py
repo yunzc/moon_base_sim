@@ -6,17 +6,19 @@ from typing import Optional
 import simpy
 from pydantic import BaseModel, ConfigDict
 
+from ..comms.messages import BLOCKS, STATUS, BlockReady, RobotStatus
 from .sensors import Sensor
 from .world import World
 
 
 class Direction(Enum):
-    """Cardinal movement on the grid (origin top-left, so y grows downward)."""
-
     UP = (0, -1)
     DOWN = (0, 1)
     LEFT = (-1, 0)
     RIGHT = (1, 0)
+
+
+_NAME_TO_DIR = {d.name.lower(): d for d in Direction}
 
 
 class RobotConfig(BaseModel):
@@ -58,11 +60,7 @@ class AssemblerConfig(RobotConfig):
 
 
 class RobotsConfig(BaseModel):
-    """Fleet composition — one config per robot, grouped by kind.
-
-    Composition is explicit: callers must supply the per-robot configs. The
-    fleet size is the length of each list.
-    """
+    """Fleet composition — one config per robot, grouped by kind."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -72,11 +70,12 @@ class RobotsConfig(BaseModel):
 
 
 class Robot:
-    """A body on the grid with primitive actuators, driven by the autonomy.
+    """A body on the grid that executes commands pulled from an inbox.
 
-    Command methods are non-blocking: they record a command that an internal
-    SimPy process (:meth:`run`) executes one at a time. No pathfinding or
-    decisions here — the autonomy issues primitives and polls :attr:`is_idle`.
+    The robot publishes its status on every state change and runs one command
+    at a time. Commands are addressed by ``rid`` and carry a ``seq``; the robot
+    echoes the last finished ``seq`` (``done_seq``) so an autonomy can tell when
+    a command has completed. No pathfinding/decisions here.
     """
 
     kind: str = "robot"
@@ -92,6 +91,7 @@ class Robot:
         world: World,
         sensors: list[Sensor],
         env: simpy.Environment,
+        endpoint,
     ):
         self.rid = rid
         self.x = x
@@ -100,11 +100,15 @@ class Robot:
         self.speed = config.speed
         self.state = "idle"
         self.battery = 100.0
-        self.world = world          # acted on (actuation)
-        self.sensors = sensors      # read by the autonomy, never the world
+        self.world = world
+        self.sensors = sensors
         self._env = env
-        self._cmd: Optional[tuple] = None         # current primitive, None when idle
-        self._wake: Optional[simpy.Event] = None  # set while sleeping for a command
+        self._endpoint = endpoint
+        self._inbox = simpy.Store(env)
+        self._peers: dict[str, "Robot"] = {}   # set by the Simulator
+        self._cur_seq = 0
+        self._done_seq = 0
+        self._busy = False
 
     @property
     def pos(self) -> tuple[int, int]:
@@ -116,37 +120,49 @@ class Robot:
 
     @property
     def is_idle(self) -> bool:
-        return self._cmd is None
+        return not self._busy
 
-    def _set_cmd(self, cmd: tuple) -> None:
-        """Record a command and wake the actor if it is sleeping for one."""
-        self._cmd = cmd
-        if self._wake is not None and not self._wake.triggered:
-            self._wake.succeed()
-            self._wake = None
+    def deliver(self, cmd) -> None:
+        """Hand a command to this robot's inbox (called by the Simulator's router)."""
+        self._inbox.put(cmd)
+
+    def heartbeat(self, period: float):
+        """Re-publish status at a fixed rate so late-joining clients see idle robots."""
+        while True:
+            yield self._env.timeout(period)
+            self._publish_status()
 
     def run(self):
-        """SimPy process: execute the current command, else sleep until one."""
+        self._publish_status()
         while True:
-            if self._cmd is None:
-                self.state = "idle"
-                self._wake = self._env.event()
-                yield self._wake
-                continue
-            yield from self._execute(self._cmd)
-            self._cmd = None
+            cmd = yield self._inbox.get()
+            self._cur_seq = cmd.seq
+            self._busy = True
+            self._publish_status()
+            yield from getattr(self, f"_do_{cmd.verb}")(*cmd.args)
+            self._done_seq = cmd.seq
+            self._busy = False
+            self.state = "idle"
+            self._publish_status()
 
-    def _execute(self, cmd: tuple):
-        """Dispatch a command tuple to its ``_do_<tag>`` generator."""
-        tag, *rest = cmd
-        return getattr(self, f"_do_{tag}")(*rest)
+    def _publish_status(self) -> None:
+        self._endpoint.publish(
+            STATUS,
+            RobotStatus(
+                rid=self.rid,
+                kind=self.kind,
+                pos=self.pos,
+                is_idle=not self._busy,
+                carrying=self.carrying,
+                regolith=getattr(self, "regolith", 0),
+                regolith_inventory=getattr(self, "regolith_inventory", 0),
+                done_seq=self._done_seq,
+                t=self._env.now,
+            ),
+        )
 
-    def step(self, direction: Direction) -> None:
-        """Queue a single-cell cardinal move. The only movement primitive."""
-        self._set_cmd(("step", direction))
-
-    def _do_step(self, direction: Direction):
-        dx, dy = direction.value
+    def _do_step(self, direction: str):
+        dx, dy = _NAME_TO_DIR[direction].value
         nx, ny = self.x + dx, self.y + dy
         if not self.world.in_bounds(nx, ny):
             return
@@ -161,34 +177,18 @@ class Loader(Robot):
 
     config: LoaderConfig
 
-    def __init__(
-        self,
-        rid: str,
-        x: int,
-        y: int,
-        config: LoaderConfig,
-        world: World,
-        sensors: list[Sensor],
-        env: simpy.Environment,
-    ):
-        super().__init__(rid, x, y, config, world, sensors, env)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.regolith = 0
 
     @property
     def carrying(self) -> Optional[str]:
         return f"reg×{self.regolith}" if self.regolith else None
 
-    def grade(self, cell: tuple[int, int]) -> None:
-        self._set_cmd(("grade", cell))
-
     def _do_grade(self, cell: tuple[int, int]):
         self.state = "grading"
         yield self._env.timeout(self.config.grade_time)
         self.world.grade(*cell, self.config.grade_neighborhood)
-        self.state = "idle"
-
-    def excavate(self, cell: tuple[int, int]) -> None:
-        self._set_cmd(("excavate", cell))
 
     def _do_excavate(self, cell: tuple[int, int]):
         if self.regolith >= self.config.loader_capacity:
@@ -197,10 +197,6 @@ class Loader(Robot):
         yield self._env.timeout(self.config.excavate_time)
         self.world.excavate(*cell, self.config.excavate_depth_cm)
         self.regolith += 1
-        self.state = "idle"
-
-    def unload_ground(self, cell: tuple[int, int]) -> None:
-        self._set_cmd(("unload_ground", cell))
 
     def _do_unload_ground(self, cell: tuple[int, int]):
         if self.regolith == 0:
@@ -210,19 +206,15 @@ class Loader(Robot):
         for _ in range(self.regolith):
             self.world.deposit(*cell, self.config.deposit_height_cm)
         self.regolith = 0
-        self.state = "idle"
 
-    def unload_into(self, producer: "Producer") -> None:
-        self._set_cmd(("unload_into", producer))
-
-    def _do_unload_into(self, producer: "Producer"):
+    def _do_feed(self, producer_rid: str):
         if self.regolith == 0:
             return
+        producer = self._peers[producer_rid]
         self.state = "feeding"
         yield self._env.timeout(self.config.unload_time)
         producer.regolith_inventory += self.regolith
         self.regolith = 0
-        self.state = "idle"
 
 
 class Producer(Robot):
@@ -231,42 +223,22 @@ class Producer(Robot):
 
     config: ProducerConfig
 
-    def __init__(
-        self,
-        rid: str,
-        x: int,
-        y: int,
-        config: ProducerConfig,
-        world: World,
-        sensors: list[Sensor],
-        env: simpy.Environment,
-    ):
-        super().__init__(rid, x, y, config, world, sensors, env)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.regolith_inventory = 0
-        self._ready: list[tuple[int, int]] = []   # source coords of finished blocks
 
     @property
     def carrying(self) -> Optional[str]:
         return f"feed×{self.regolith_inventory}" if self.regolith_inventory else None
-
-    @property
-    def ready_blocks(self) -> int:
-        return len(self._ready)
-
-    def take_block(self) -> Optional[tuple[int, int]]:
-        """Hand off one finished block's source coord (consumed by an assembler)."""
-        return self._ready.pop(0) if self._ready else None
-
-    def produce(self) -> None:
-        self._set_cmd(("produce",))
 
     def _do_produce(self):
         if self.regolith_inventory >= self.config.regolith_per_block:
             self.state = "producing"
             yield self._env.timeout(self.config.produce_time)
             self.regolith_inventory -= self.config.regolith_per_block
-            self._ready.append(self.pos)
-        self.state = "idle"
+            self._endpoint.publish(
+                BLOCKS, BlockReady(self.rid, self.pos, self._env.now)
+            )
 
 
 class Assembler(Robot):
@@ -275,43 +247,29 @@ class Assembler(Robot):
 
     config: AssemblerConfig
 
-    # Per-item placement durations, keyed by the carried item.
     _PLACE_TIME = {
         "anchor": "anchor_drive_time",
         "block": "block_place_time",
         "airlock": "dock_time",
     }
 
-    def __init__(
-        self,
-        rid: str,
-        x: int,
-        y: int,
-        config: AssemblerConfig,
-        world: World,
-        sensors: list[Sensor],
-        env: simpy.Environment,
-    ):
-        super().__init__(rid, x, y, config, world, sensors, env)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._carrying: Optional[str] = None
 
     @property
     def carrying(self) -> Optional[str]:
         return self._carrying
 
-    def pickup(self, item: str) -> None:
-        """Grab an item at the current cell. Instantaneous, no simulated time."""
+    def _do_pickup(self, item: str):
         self._carrying = item
         self.state = f"fetch_{item}"
-
-    def place(self, target: tuple[int, int]) -> None:
-        self._set_cmd(("place", target))
+        yield self._env.timeout(0)
 
     def _do_place(self, target: tuple[int, int]):
         item = self._carrying
         self.state = f"place_{item}"
-        place_time = getattr(self.config, self._PLACE_TIME.get(item, "block_place_time"))
-        yield self._env.timeout(place_time)
+        yield self._env.timeout(getattr(self.config, self._PLACE_TIME.get(item, "block_place_time")))
         if item == "anchor":
             self.world.set_anchor(*target)
         elif item == "block":
@@ -320,16 +278,10 @@ class Assembler(Robot):
             self.world.airlock_docked = True
             self.world.pod_deployed = True
         self._carrying = None
-        self.state = "idle"
-
-    def inflate(self) -> None:
-        self._set_cmd(("inflate",))
 
     def _do_inflate(self):
         self.state = "inflating"
         steps = 60
-        duration = self.config.inflate_time
         for i in range(steps):
             self.world.pod_inflation = (i + 1) / steps
-            yield self._env.timeout(duration / steps)
-        self.state = "idle"
+            yield self._env.timeout(self.config.inflate_time / steps)

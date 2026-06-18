@@ -95,3 +95,25 @@ POD_INFLATED = Goal(
 )
 
 GOALS: list[Goal] = [SITE_PREP, ANCHORS, BLOCKS, AIRLOCK_DOCKED, POD_INFLATED]
+
+
+def latched_statuses(obs, blueprint, latched: dict) -> dict:
+    """Evaluate every goal against ``obs``, latching each OK into ``latched``.
+
+    Goals are monotonic milestones — once met they stay met even if later work
+    perturbs the terrain a predicate reads. ``latched`` maps goal name -> reason.
+    """
+    out: dict[str, tuple[bool, str]] = {}
+    for goal in GOALS:
+        if goal.name in latched:
+            out[goal.name] = (True, latched[goal.name])
+            continue
+        ok, reason = goal.is_done(obs, blueprint)
+        if ok:
+            latched[goal.name] = reason
+        out[goal.name] = (ok, reason)
+    return out
+
+
+def all_complete(statuses: dict) -> bool:
+    return all(ok for ok, _ in statuses.values())

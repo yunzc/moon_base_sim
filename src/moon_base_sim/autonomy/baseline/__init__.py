@@ -1,4 +1,4 @@
-"""Baseline autonomy: hardcoded three-phase mission with ground-truth state access."""
-from .autonomy import Baseline
+"""Baseline autonomy: a phase-driven policy over the pub/sub world model."""
+from .policy import Baseline
 
 __all__ = ["Baseline"]

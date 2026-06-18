@@ -6,16 +6,17 @@ tick to pick the next cardinal move toward a goal. No simulated time, no SimPy.
 from __future__ import annotations
 
 import heapq
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
-from ..sim.robots import Direction
-from ..sim.sensors import GtObservation
+if TYPE_CHECKING:
+    from ..sim.sensors import GtObservation
 
 Coord = tuple[int, int]
 
 NEIGHBORS_4 = [(1, 0), (-1, 0), (0, 1), (0, -1)]
 
-_DELTA_TO_DIR = {d.value: d for d in Direction}
+# Cardinal delta -> direction name carried in a step command.
+_DELTA_TO_NAME = {(0, -1): "up", (0, 1): "down", (-1, 0): "left", (1, 0): "right"}
 
 
 def manhattan(a: Coord, b: Coord) -> int:
@@ -79,8 +80,8 @@ def astar(
     return []
 
 
-def next_step(obs: GtObservation, pos: Coord, goal: Coord) -> Optional[Direction]:
-    """Next cardinal step from `pos` toward `goal`; None if arrived/blocked/no path."""
+def next_step(obs: "GtObservation", pos: Coord, goal: Coord) -> Optional[str]:
+    """Next cardinal step name from `pos` toward `goal`; None if arrived/blocked/no path."""
     if pos == goal:
         return None
     path = astar(pos, goal, _passable(obs, pos))
@@ -89,4 +90,4 @@ def next_step(obs: GtObservation, pos: Coord, goal: Coord) -> Optional[Direction
     nx, ny = path[1]
     if obs.is_blocked(nx, ny) and (nx, ny) != goal:
         return None
-    return _DELTA_TO_DIR[(nx - pos[0], ny - pos[1])]
+    return _DELTA_TO_NAME[(nx - pos[0], ny - pos[1])]

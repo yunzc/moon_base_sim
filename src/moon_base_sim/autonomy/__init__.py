@@ -1,15 +1,15 @@
-"""Pluggable autonomy modules. Pick one with ``load_autonomy(name, config)``."""
+"""Pluggable autonomy policies. Pick one with ``load_autonomy(name, config)``."""
 from __future__ import annotations
 
 import importlib
 from typing import TYPE_CHECKING
 
-from .base import Autonomy, AutonomyState
+from .base import Autonomy
 
 if TYPE_CHECKING:
     from ..sim.config import Config
 
-__all__ = ["Autonomy", "AutonomyState", "load_autonomy"]
+__all__ = ["Autonomy", "load_autonomy"]
 
 _REGISTRY: dict[str, str] = {
     "baseline": "moon_base_sim.autonomy.baseline:Baseline",
