@@ -4,6 +4,7 @@ sim:
   cell_size: 16
   sim_speed: 20.0
   target_fps: 30
+  tick: 0.5
 
 world:
   grid_w: 40

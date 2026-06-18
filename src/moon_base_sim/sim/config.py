@@ -19,6 +19,9 @@ class SimConfig(BaseModel):
     cell_size: int
     sim_speed: float
     target_fps: int
+    # Headless decide/step granularity (sim-seconds). Set near a robot step
+    # duration (~1/speed) so the autonomy issues moves at a continuous cadence.
+    tick: float
 
 
 class LayoutConfig(BaseModel):

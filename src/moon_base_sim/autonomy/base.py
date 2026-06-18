@@ -1,20 +1,22 @@
-"""Autonomy contract: state and the protocol implementations satisfy.
+"""Autonomy contract: the state object and the protocol implementations satisfy.
 
-Autonomies perceive the world only through robot-mounted sensors, dispatch
-robot commands, and report progress on their own state object. The mission spec
+An autonomy is the "player": it perceives the world only through robot-mounted
+sensors, decides what to do, and issues commands through the robots' APIs. It is
+independent of the simulator — no SimPy, no ``env``, no clock. The mission spec
 (blueprint, supervisor checks) lives in ``moon_base_sim.mission`` and is shared
 across all autonomies.
+
+The simulator advances time; the autonomy is invoked once per tick via
+:meth:`Autonomy.decide`, which is re-entrant (it keeps its own state and only
+reads robot status + issues new commands).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Generator, Protocol
-
-import simpy
+from typing import Protocol
 
 from ..mission.blueprint import Blueprint
 from ..sim.robots import Robot
-from ..sim.world import World
 
 
 @dataclass
@@ -30,11 +32,7 @@ class AutonomyState:
 class Autonomy(Protocol):
     state: AutonomyState
 
-    def spawn_fleet(self, world: World) -> list[Robot]: ...
-
-    def run(
-        self,
-        env: simpy.Environment,
-        fleet: list[Robot],
-        blueprint: Blueprint,
-    ) -> Generator: ...
+    def decide(self, fleet: list[Robot], blueprint: Blueprint) -> None:
+        """Observe the fleet's sensors and issue robot commands. Called once per
+        tick by the rollout loop; must be re-entrant."""
+        ...

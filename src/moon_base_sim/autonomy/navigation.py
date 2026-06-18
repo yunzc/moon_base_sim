@@ -1,19 +1,20 @@
 """Navigation for autonomy implementations.
 
-Pathfinding (A*) and path-following live here, not in the simulated robot.
-A robot's only movement capability is a single cardinal `step`; the autonomy
-module decides *where* to go and walks the robot there one cell at a time.
+Pathfinding (A*) lives here, in the autonomy (the "brain"), never in the
+simulated robot. A robot's only movement capability is a single cardinal
+`step`; the autonomy decides *where* to go and walks the robot there one cell
+at a time by issuing one `step` per decision tick.
+
+These are pure functions — no simulated time, no SimPy. The policy calls
+:func:`next_step` each tick to pick the robot's next cardinal move.
 """
 from __future__ import annotations
 
 import heapq
-from typing import Callable
+from typing import Callable, Optional
 
-import simpy
-
-from ..sim.robots import Direction, Robot
+from ..sim.robots import Direction
 from ..sim.sensors import GtObservation
-from .perception import gt_observation
 
 Coord = tuple[int, int]
 
@@ -83,23 +84,21 @@ def astar(
     return []
 
 
-def navigate(env: simpy.Environment, robot: Robot, goal: Coord):
-    """Walk `robot` to `goal` one cardinal step at a time, re-planning each cell.
+def next_step(obs: GtObservation, pos: Coord, goal: Coord) -> Optional[Direction]:
+    """Pick the next cardinal step from `pos` toward `goal`, planning on `obs`.
 
-    Plans from the robot's latest *perceived* observation (not ground truth):
-    A* picks the next cell, this converts the delta to a `Direction`, and the
-    robot moves. Waits in place when blocked. Re-sensing each step keeps the
-    obstacle data fresh, subject to the sensor's publish-rate latency.
+    Pure: runs A* over the perceived observation and returns the `Direction` of
+    the first cell on the path. Returns ``None`` when already at the goal, when
+    no path exists, or when the next cell is currently blocked (the caller
+    should wait and re-plan next tick — re-sensing keeps obstacle data fresh,
+    subject to the sensor's publish-rate latency).
     """
-    while robot.pos != goal:
-        obs = gt_observation(robot)
-        path = astar(robot.pos, goal, _passable(obs, robot.pos))
-        if not path or len(path) < 2:
-            yield env.timeout(0.5)
-            continue
-        nx, ny = path[1]
-        if obs.is_blocked(nx, ny) and (nx, ny) != goal:
-            yield env.timeout(0.2)
-            continue
-        direction = _DELTA_TO_DIR[(nx - robot.x, ny - robot.y)]
-        yield from robot.step(env, direction)
+    if pos == goal:
+        return None
+    path = astar(pos, goal, _passable(obs, pos))
+    if not path or len(path) < 2:
+        return None
+    nx, ny = path[1]
+    if obs.is_blocked(nx, ny) and (nx, ny) != goal:
+        return None
+    return _DELTA_TO_DIR[(nx - pos[0], ny - pos[1])]

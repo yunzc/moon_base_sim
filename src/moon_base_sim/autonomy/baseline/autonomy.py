@@ -1,34 +1,23 @@
-"""Baseline autonomy implementation: hardcoded three-phase mission."""
-from __future__ import annotations
+"""Baseline autonomy: a re-entrant policy that perceives via robot sensors.
 
-import simpy
+The player. It holds no ``env`` and no Simulator reference — the rollout loop
+calls :meth:`decide` once per tick with the fleet (the robots' APIs) and the
+blueprint (the goals).
+"""
+from __future__ import annotations
 
 from ...mission.blueprint import Blueprint
 from ...sim.config import Config
 from ...sim.robots import Robot
-from ...sim.world import World
-from ..base import AutonomyState
-from .phases import run_mission, spawn_fleet
+from .policy import PolicyState, decide
 
 
 class Baseline:
-    """Perceives the world via each robot's GtSensor and dispatches phases 1–3."""
+    """Drives the fleet through the mission via the per-tick :func:`policy.decide`."""
 
     def __init__(self, config: Config) -> None:
         self.config = config
-        self.state = AutonomyState()
+        self.state = PolicyState()
 
-    def spawn_fleet(self, world: World) -> list[Robot]:
-        return spawn_fleet(
-            world, self.config.robots, self.config.layout, self.config.sensors
-        )
-
-    def run(
-        self,
-        env: simpy.Environment,
-        fleet: list[Robot],
-        blueprint: Blueprint,
-    ):
-        yield from run_mission(
-            env, fleet, self.state, blueprint, self.config.layout
-        )
+    def decide(self, fleet: list[Robot], blueprint: Blueprint) -> None:
+        decide(self.state, fleet, blueprint, self.config.layout)

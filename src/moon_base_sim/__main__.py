@@ -1,21 +1,21 @@
 """moon_base_sim entry point.
 
-Runs the SimPy mission alongside a Pygame top-down view. The SimPy clock is
-advanced in small steps between frames, so the visualization stays responsive
-while long processing times (produce/grade/place) still "fast-forward".
+The rollout loop: it builds a self-contained :class:`Simulator` (the game) and
+an autonomy (the player), then interleaves ``autonomy.decide(...)`` with
+``sim.step(dt)``. The autonomy never sees ``env``; the simulator never sees the
+autonomy. In the visual path the clock is advanced in small per-frame steps so
+the view stays responsive while long actions "fast-forward".
 """
 from __future__ import annotations
 
 import argparse
 import sys
 
-import simpy
-
 from .autonomy import AutonomyState, load_autonomy
 from .mission.blueprint import Blueprint
 from .mission.goals import GOALS
 from .sim.config import Config, load_config
-from .sim.world import World
+from .sim.simulator import Simulator
 
 
 def parse_args() -> argparse.Namespace:
@@ -39,14 +39,18 @@ def _goals_done(state: AutonomyState) -> int:
 def run_headless(
     config: Config, autonomy_name: str, seed: int, max_time: float
 ) -> int:
-    env = simpy.Environment()
-    world = World.generate(config.world, seed=seed)
+    sim = Simulator(config, seed=seed)
     blueprint = Blueprint(config.blueprint)
     autonomy = load_autonomy(autonomy_name, config)
-    fleet = autonomy.spawn_fleet(world)
-    env.process(autonomy.run(env, fleet, blueprint))
-    env.run(until=max_time)
+
+    while sim.now < max_time and not _mission_done(autonomy.state):
+        autonomy.decide(sim.fleet, blueprint)
+        sim.step(config.sim.tick)
+    if _mission_done(autonomy.state):
+        autonomy.state.finish_time = sim.now
+
     state = autonomy.state
+    world = sim.world
     print(
         f"activity={state.current_activity!r} "
         f"anchors={len(world.anchors)} blocks={len(world.blocks)} "
@@ -61,24 +65,23 @@ def run_visual(config: Config, autonomy_name: str, seed: int) -> int:
     autonomy = load_autonomy(autonomy_name, config)
     from .viz.render import Renderer
 
-    env = simpy.Environment()
-    world = World.generate(config.world, seed=seed)
+    sim = Simulator(config, seed=seed)
     blueprint = Blueprint(config.blueprint)
-    fleet = autonomy.spawn_fleet(world)
-    env.process(autonomy.run(env, fleet, blueprint))
-    renderer = Renderer(world, fleet, autonomy, blueprint, config.sim)
+    renderer = Renderer(sim.world, sim.fleet, autonomy, blueprint, config.sim)
 
     step = config.sim.sim_speed / config.sim.target_fps
     running = True
     while running:
         try:
-            env.run(until=env.now + step)
+            autonomy.decide(sim.fleet, blueprint)
+            sim.step(step)
         except Exception as exc:
             print(f"sim error: {exc}", file=sys.stderr)
             break
-        running = renderer.draw(env.now)
+        running = renderer.draw(sim.now)
         if _mission_done(autonomy.state):
-            while renderer.draw(env.now):
+            autonomy.state.finish_time = sim.now
+            while renderer.draw(sim.now):
                 pass
             break
     return 0
