@@ -1,17 +1,9 @@
 """Baseline policy: a re-entrant state machine driven one tick at a time.
 
-The autonomy is the "player". Each tick the simulator calls :func:`decide`,
-which (1) evaluates the mission goals from the perceived observation, (2)
-advances every robot's in-flight journey one step, and (3) for the current
-phase, assigns fresh work to robots that are free. It never touches ``env`` and
-never blocks — pathfinding (A*) lives here, in the brain; the robots only ever
-receive single-cell ``step``s and primitive actions.
-
-A robot's job is expressed as a small **plan** — a list of :class:`Task`s
-(``walk to a cell, then act``). :func:`_drive` carries one task across ticks:
-walk toward ``target`` (one ``step`` per tick), then fire the action primitive,
-then report done. The ``simpy.Store`` queues of the old sequential mission
-become plain sets/lists held in :class:`PolicyState`.
+Each tick :func:`decide` evaluates the goals, advances every robot's in-flight
+plan one step, and assigns fresh work for the current phase. A robot's job is a
+:class:`Task` (walk to a cell, then act) that :func:`_drive` carries across
+ticks — pathfinding (A*) lives here, the robots only get single-cell steps.
 """
 from __future__ import annotations
 
@@ -64,22 +56,12 @@ class PolicyState(AutonomyState):
     inflate_issued: bool = False
 
 
-# ---------------------------------------------------------------------------
-# Goal evaluation & small helpers
-# ---------------------------------------------------------------------------
-
-
 def _nearest(cells, pos: Coord) -> Coord:
     return min(cells, key=lambda c: abs(c[0] - pos[0]) + abs(c[1] - pos[1]))
 
 
 def _eval_goals(state: PolicyState, obs, blueprint: Blueprint) -> None:
-    """Refresh pending goals; latch each OK (like the old once-per-phase record).
-
-    Goals are monotonic mission milestones: once satisfied they stay satisfied,
-    even if later work (e.g. digging supply pits) perturbs the terrain a goal's
-    predicate looked at.
-    """
+    """Evaluate pending goals, latching each OK (milestones stay satisfied)."""
     for goal in GOALS:
         if state.goal_status.get(goal.name, (False, ""))[0]:
             continue                                   # already achieved — latch it
@@ -91,11 +73,6 @@ def _eval_goals(state: PolicyState, obs, blueprint: Blueprint) -> None:
 
 def _goal_ok(state: PolicyState, name: str) -> bool:
     return state.goal_status.get(name, (False, ""))[0]
-
-
-# ---------------------------------------------------------------------------
-# Per-robot journey driver (walk-then-act)
-# ---------------------------------------------------------------------------
 
 
 def _fire_action(robot: Robot, task: Task) -> None:
@@ -117,9 +94,8 @@ def _fire_action(robot: Robot, task: Task) -> None:
 def _drive(robot: Robot, task: Task) -> bool:
     """Carry one task forward this tick. Returns True when it is complete."""
     if not robot.is_idle:
-        return False                       # still busy with its last primitive
+        return False
     if robot.pos != task.target:
-        # PATHFINDING IS HERE (the brain): pick one cardinal step toward target.
         direction = next_step(gt_observation(robot), robot.pos, task.target)
         if direction is not None:
             robot.step(direction)
@@ -128,7 +104,7 @@ def _drive(robot: Robot, task: Task) -> bool:
         _fire_action(robot, task)
         task.acted = True
         return False
-    return True                            # arrived, acted, and idle again
+    return True
 
 
 def _advance(state: PolicyState, robot: Robot) -> None:
@@ -140,13 +116,8 @@ def _advance(state: PolicyState, robot: Robot) -> None:
 
 
 def _free(state: PolicyState, robot: Robot) -> bool:
-    """A robot is free for new work when idle with no remaining plan."""
+    """Free for new work: idle with no remaining plan."""
     return robot.is_idle and not state.plans.get(robot.rid)
-
-
-# ---------------------------------------------------------------------------
-# Phase handlers
-# ---------------------------------------------------------------------------
 
 
 def _dig(state, fleet, blueprint, layout, obs) -> None:
@@ -292,11 +263,6 @@ _PHASE_HANDLERS = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
-
 def _init(state: PolicyState, fleet: list[Robot], blueprint: Blueprint) -> None:
     obs = gt_observation(fleet[0])
     state.foundation = list(blueprint.foundation_cells(obs))
@@ -316,13 +282,8 @@ def decide(
     if not state.started:
         _init(state, fleet, blueprint)
 
-    # The "eye": any robot's GtSensor sees the whole world.
-    obs = gt_observation(fleet[0])
+    obs = gt_observation(fleet[0])      # any GtSensor sees the whole world
     _eval_goals(state, obs, blueprint)
-
-    # Progress every in-flight plan one step.
     for r in fleet:
         _advance(state, r)
-
-    # Phase-specific transitions and new assignments.
     _PHASE_HANDLERS[state.phase](state, fleet, blueprint, layout, obs)

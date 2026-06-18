@@ -1,10 +1,7 @@
 """moon_base_sim entry point.
 
-The rollout loop: it builds a self-contained :class:`Simulator` (the game) and
-an autonomy (the player), then interleaves ``autonomy.decide(...)`` with
-``sim.step(dt)``. The autonomy never sees ``env``; the simulator never sees the
-autonomy. In the visual path the clock is advanced in small per-frame steps so
-the view stays responsive while long actions "fast-forward".
+The rollout loop builds a :class:`Simulator` and an autonomy, then interleaves
+``autonomy.decide(...)`` with ``sim.step(dt)`` (per-frame steps in the visual path).
 """
 from __future__ import annotations
 
@@ -67,7 +64,7 @@ def run_visual(config: Config, autonomy_name: str, seed: int) -> int:
 
     sim = Simulator(config, seed=seed)
     blueprint = Blueprint(config.blueprint)
-    renderer = Renderer(sim.world, sim.fleet, autonomy, blueprint, config.sim)
+    renderer = Renderer(sim.world, sim.fleet, blueprint, config.sim)
 
     step = config.sim.sim_speed / config.sim.target_fps
     running = True

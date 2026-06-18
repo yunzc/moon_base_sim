@@ -1,12 +1,7 @@
-"""Navigation for autonomy implementations.
+"""Pathfinding for the autonomy — pure A* over a perceived observation.
 
-Pathfinding (A*) lives here, in the autonomy (the "brain"), never in the
-simulated robot. A robot's only movement capability is a single cardinal
-`step`; the autonomy decides *where* to go and walks the robot there one cell
-at a time by issuing one `step` per decision tick.
-
-These are pure functions — no simulated time, no SimPy. The policy calls
-:func:`next_step` each tick to pick the robot's next cardinal move.
+Robots only ever take a single `step`; the policy calls :func:`next_step` each
+tick to pick the next cardinal move toward a goal. No simulated time, no SimPy.
 """
 from __future__ import annotations
 
@@ -85,14 +80,7 @@ def astar(
 
 
 def next_step(obs: GtObservation, pos: Coord, goal: Coord) -> Optional[Direction]:
-    """Pick the next cardinal step from `pos` toward `goal`, planning on `obs`.
-
-    Pure: runs A* over the perceived observation and returns the `Direction` of
-    the first cell on the path. Returns ``None`` when already at the goal, when
-    no path exists, or when the next cell is currently blocked (the caller
-    should wait and re-plan next tick — re-sensing keeps obstacle data fresh,
-    subject to the sensor's publish-rate latency).
-    """
+    """Next cardinal step from `pos` toward `goal`; None if arrived/blocked/no path."""
     if pos == goal:
         return None
     path = astar(pos, goal, _passable(obs, pos))

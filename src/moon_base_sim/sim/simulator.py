@@ -1,11 +1,7 @@
-"""The simulator: a self-contained game world of terrain + robots + clock.
+"""The simulator: a self-contained world of terrain + robots + clock.
 
-The :class:`Simulator` owns the SimPy ``env`` (the clock), the :class:`World`
-(pure state), and the fleet of robots (each with its mounted sensors). It knows
-nothing about any autonomy — the autonomy is an external "player" that reads the
-robots' APIs and issues commands, while the simulator advances time on its own.
-
-``env`` is injected into the robots here, once, and never hand-threaded again.
+Owns the SimPy ``env``, the :class:`World`, and the fleet; knows nothing about
+any autonomy. ``env`` is injected into the robots here, once.
 """
 from __future__ import annotations
 
@@ -51,9 +47,7 @@ class Simulator:
         self.env = simpy.Environment()
         self.world = World.generate(config.world, seed=seed)
         self.fleet = build_fleet(self.env, self.world, config)
-        # Start every robot's actor process and every mounted sensor's publish
-        # process. The autonomy perceives the world only through these sensors.
-        for r in self.fleet:
+        for r in self.fleet:        # start each robot actor + its sensors
             self.env.process(r.run())
             for s in r.sensors:
                 self.env.process(s.run(self.env))

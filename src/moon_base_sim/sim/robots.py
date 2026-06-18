@@ -72,17 +72,11 @@ class RobotsConfig(BaseModel):
 
 
 class Robot:
-    """A dumb game character: a body on the grid with primitive actuators.
+    """A body on the grid with primitive actuators, driven by the autonomy.
 
-    Robots expose **non-blocking** command methods (``step``, ``excavate``, …)
-    that just record the current command; an internal SimPy process
-    (:meth:`run`) executes one command at a time, spending simulated time
-    inside the body. The robot has no intelligence — it does no pathfinding and
-    makes no decisions. Choosing *where* to go and *what* to do is the
-    autonomy's job; the autonomy issues primitives and polls :attr:`is_idle`.
-
-    ``env`` lives here (injected once by the :class:`Simulator`) and is never
-    exposed to the autonomy.
+    Command methods are non-blocking: they record a command that an internal
+    SimPy process (:meth:`run`) executes one at a time. No pathfinding or
+    decisions here — the autonomy issues primitives and polls :attr:`is_idle`.
     """
 
     kind: str = "robot"
@@ -106,15 +100,11 @@ class Robot:
         self.speed = config.speed
         self.state = "idle"
         self.battery = 100.0
-        # The world the robot physically acts on (actuation), and the sensors
-        # mounted on it (perception, read by the autonomy — never the world).
-        self.world = world
-        self.sensors = sensors
+        self.world = world          # acted on (actuation)
+        self.sensors = sensors      # read by the autonomy, never the world
         self._env = env
-        self._cmd: Optional[tuple] = None     # current primitive, or None when idle
+        self._cmd: Optional[tuple] = None         # current primitive, None when idle
         self._wake: Optional[simpy.Event] = None  # set while sleeping for a command
-
-    # -- status the autonomy reads ------------------------------------------
 
     @property
     def pos(self) -> tuple[int, int]:
@@ -127,8 +117,6 @@ class Robot:
     @property
     def is_idle(self) -> bool:
         return self._cmd is None
-
-    # -- actor process & command plumbing -----------------------------------
 
     def _set_cmd(self, cmd: tuple) -> None:
         """Record a command and wake the actor if it is sleeping for one."""
@@ -153,15 +141,8 @@ class Robot:
         tag, *rest = cmd
         return getattr(self, f"_do_{tag}")(*rest)
 
-    # -- movement primitive (the only one a robot has) ----------------------
-
     def step(self, direction: Direction) -> None:
-        """Queue a single-cell move in one cardinal direction (non-blocking).
-
-        The only movement primitive a robot has — it cannot jump to an
-        arbitrary cell. Deciding *where* to go (pathfinding) is the autonomy
-        module's job. Guards physical bounds only.
-        """
+        """Queue a single-cell cardinal move. The only movement primitive."""
         self._set_cmd(("step", direction))
 
     def _do_step(self, direction: Direction):
@@ -169,9 +150,9 @@ class Robot:
         nx, ny = self.x + dx, self.y + dy
         if not self.world.in_bounds(nx, ny):
             return
+        self.state = "driving"
         yield self._env.timeout(1.0 / max(self.speed, 0.1))
         self.x, self.y = nx, ny
-        self.battery = max(0.0, self.battery - 0.05)
 
 
 class Loader(Robot):
@@ -201,7 +182,6 @@ class Loader(Robot):
         self._set_cmd(("grade", cell))
 
     def _do_grade(self, cell: tuple[int, int]):
-        """Grade at the current location. Autonomy positions the loader first."""
         self.state = "grading"
         yield self._env.timeout(self.config.grade_time)
         self.world.grade(*cell, self.config.grade_neighborhood)
@@ -281,13 +261,11 @@ class Producer(Robot):
         self._set_cmd(("produce",))
 
     def _do_produce(self):
-        """Convert one block's worth of inventory into a finished block here."""
         if self.regolith_inventory >= self.config.regolith_per_block:
             self.state = "producing"
             yield self._env.timeout(self.config.produce_time)
             self.regolith_inventory -= self.config.regolith_per_block
             self._ready.append(self.pos)
-            self.battery = max(0.0, self.battery - 1.0)
         self.state = "idle"
 
 
@@ -322,10 +300,7 @@ class Assembler(Robot):
         return self._carrying
 
     def pickup(self, item: str) -> None:
-        """Grab an item at the current location (autonomy navigated here).
-
-        Instantaneous — sets the carried item directly, no simulated time.
-        """
+        """Grab an item at the current cell. Instantaneous, no simulated time."""
         self._carrying = item
         self.state = f"fetch_{item}"
 
@@ -333,7 +308,6 @@ class Assembler(Robot):
         self._set_cmd(("place", target))
 
     def _do_place(self, target: tuple[int, int]):
-        """Install the carried item into the world at the current location."""
         item = self._carrying
         self.state = f"place_{item}"
         place_time = getattr(self.config, self._PLACE_TIME.get(item, "block_place_time"))

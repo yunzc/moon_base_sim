@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pygame
 
-from ..autonomy import Autonomy
 from ..mission.blueprint import Blueprint
 from ..mission.goals import GOALS
 from ..sim.config import SimConfig
@@ -26,7 +25,6 @@ class Renderer:
         self,
         world: World,
         fleet: list[Robot],
-        autonomy: Autonomy,
         blueprint: Blueprint,
         sim: SimConfig,
     ):
@@ -34,9 +32,9 @@ class Renderer:
         pygame.display.set_caption("moon_base_sim")
         self.world = world
         self.fleet = fleet
-        self.autonomy = autonomy
         self.blueprint = blueprint
         self.sim = sim
+        self._latched: dict[str, str] = {}   # goal.name -> reason, kept once OK
         self.cell = sim.cell_size
         self.panel_w = 340
         self.w = world.w * self.cell + self.panel_w
@@ -132,28 +130,55 @@ class Renderer:
             label = self.font.render(r.rid, True, LABEL)
             self.screen.blit(label, (cx - 8, cy - 22))
 
+    def _goal_statuses(self) -> dict[str, tuple[bool, str]]:
+        """Evaluate every goal directly against the sim world, latching each OK."""
+        out: dict[str, tuple[bool, str]] = {}
+        for goal in GOALS:
+            if goal.name in self._latched:
+                out[goal.name] = (True, self._latched[goal.name])
+                continue
+            ok, reason = goal.is_done(self.world, self.blueprint)
+            if ok:
+                self._latched[goal.name] = reason
+            out[goal.name] = (ok, reason)
+        return out
+
     def _draw_panel(self, sim_time: float) -> None:
         x0 = self.world.w * self.cell + 12
         y = 12
 
         def line(text: str, font=None) -> None:
+            """Blit one panel line, word-wrapping to the panel width."""
             nonlocal y
-            surf = (font or self.font).render(text, True, TEXT)
-            self.screen.blit(surf, (x0, y))
+            f = font or self.font
+            if not text:
+                y += f.get_height() + 4
+                return
+            max_w = self.panel_w - 24
+            indent = 0
+            cur = ""
+            for word in text.split(" "):
+                trial = word if not cur else f"{cur} {word}"
+                if not cur or f.size(trial)[0] <= max_w:
+                    cur = trial
+                    continue
+                surf = f.render(cur, True, TEXT)
+                self.screen.blit(surf, (x0 + indent, y))
+                y += surf.get_height() + 4
+                indent = 12          # hanging indent for wrapped continuations
+                cur = word
+            surf = f.render(cur, True, TEXT)
+            self.screen.blit(surf, (x0 + indent, y))
             y += surf.get_height() + 4
 
         line(f"t = {sim_time:6.1f}s")
         line("")
-        line(f"Now: {self.autonomy.state.current_activity}", self.big)
         line("Goals:", self.big)
+        statuses = self._goal_statuses()
         for goal in GOALS:
-            status = self.autonomy.state.goal_status.get(goal.name)
-            if status is None:
-                line(f" {goal.label} pending")
-            else:
-                ok, reason = status
-                mark = "OK" if ok else "X "
-                line(f" {goal.label} {mark} {reason}")
+            ok, reason = statuses[goal.name]
+            mark = "OK" if ok else "X "
+            line(f" {goal.label} {mark} {reason}")
         line("")
         line("Fleet:", self.big)
         for r in self.fleet:
