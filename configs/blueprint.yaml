@@ -1,0 +1,9 @@
+# Blueprint/goals configuration - defines mission objectives and construction targets
+
+blueprint:
+  pod_center: [20, 20]
+  dome_radius: 6
+  berm_radius: 10
+  num_anchors: 8
+  min_foundation_depth_m: 0.08
+  elevation_tolerance_m: 0.05

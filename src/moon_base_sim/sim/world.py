@@ -14,8 +14,8 @@ class WorldConfig(BaseModel):
     grid_w: int
     grid_h: int
 
-    elevation_min_cm: float
-    elevation_max_cm: float
+    elevation_min_m: float
+    elevation_max_m: float
 
 
 @dataclass
@@ -38,7 +38,7 @@ class World:
         rng = np.random.default_rng(seed)
         w, h = config.grid_w, config.grid_h
         elevation = rng.uniform(
-            config.elevation_min_cm, config.elevation_max_cm, size=(h, w)
+            config.elevation_min_m, config.elevation_max_m, size=(h, w)
         )
         occupancy = np.zeros((h, w), dtype=bool)
         return cls(w=w, h=h, config=config, elevation=elevation, occupancy=occupancy)

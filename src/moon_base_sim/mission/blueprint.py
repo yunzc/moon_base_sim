@@ -20,8 +20,8 @@ class BlueprintConfig(BaseModel):
     berm_radius: int
     num_anchors: int
 
-    min_foundation_depth_cm: float
-    elevation_tolerance_cm: float
+    min_foundation_depth_m: float
+    elevation_tolerance_m: float
 
 
 class Blueprint:
@@ -102,8 +102,8 @@ class Blueprint:
             return 0.0
         return float(vals.mean())
 
-    def foundation_variance_cm(self, obs: "GtObservation") -> float:
-        """Mean absolute deviation from the foundation's own mean — flatness."""
+    def foundation_variance_m(self, obs: "GtObservation") -> float:
+        """Mean absolute deviation from the foundation's own mean — flatness in meters."""
         vals = obs.elevation[self.foundation_mask(obs)]
         if vals.size == 0:
             return 0.0

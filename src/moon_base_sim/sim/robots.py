@@ -7,7 +7,7 @@ import simpy
 from pydantic import BaseModel, ConfigDict
 
 from ..comms.messages import BLOCKS, STATUS, BlockReady, RobotStatus
-from .sensors import Sensor
+from .sensors import Sensor, SensorsConfig
 from .world import World
 
 
@@ -22,11 +22,12 @@ _NAME_TO_DIR = {d.name.lower(): d for d in Direction}
 
 
 class RobotConfig(BaseModel):
-    """Base config shared by every robot — movement speed."""
+    """Base config shared by every robot — movement speed and sensors."""
 
     model_config = ConfigDict(frozen=True)
 
     speed: float
+    sensors: SensorsConfig
 
 
 class LoaderConfig(RobotConfig):
@@ -167,6 +168,7 @@ class Robot:
         if not self.world.in_bounds(nx, ny):
             return
         self.state = "driving"
+        self._publish_status()  # Publish the "driving" state
         yield self._env.timeout(1.0 / max(self.speed, 0.1))
         self.x, self.y = nx, ny
 
@@ -187,6 +189,7 @@ class Loader(Robot):
 
     def _do_grade(self, cell: tuple[int, int]):
         self.state = "grading"
+        self._publish_status()
         yield self._env.timeout(self.config.grade_time)
         self.world.grade(*cell, self.config.grade_neighborhood)
 
@@ -194,6 +197,7 @@ class Loader(Robot):
         if self.regolith >= self.config.loader_capacity:
             return
         self.state = "excavating"
+        self._publish_status()
         yield self._env.timeout(self.config.excavate_time)
         self.world.excavate(*cell, self.config.excavate_depth_m)
         self.regolith += 1
@@ -202,6 +206,7 @@ class Loader(Robot):
         if self.regolith == 0:
             return
         self.state = "unloading"
+        self._publish_status()
         yield self._env.timeout(self.config.unload_time)
         for _ in range(self.regolith):
             self.world.deposit(*cell, self.config.deposit_height_m)
@@ -212,6 +217,7 @@ class Loader(Robot):
             return
         producer = self._peers[producer_rid]
         self.state = "feeding"
+        self._publish_status()
         yield self._env.timeout(self.config.unload_time)
         producer.regolith_inventory += self.regolith
         self.regolith = 0
@@ -234,6 +240,7 @@ class Producer(Robot):
     def _do_produce(self):
         if self.regolith_inventory >= self.config.regolith_per_block:
             self.state = "producing"
+            self._publish_status()
             yield self._env.timeout(self.config.produce_time)
             self.regolith_inventory -= self.config.regolith_per_block
             self._endpoint.publish(
@@ -264,11 +271,13 @@ class Assembler(Robot):
     def _do_pickup(self, item: str):
         self._carrying = item
         self.state = f"fetch_{item}"
+        self._publish_status()
         yield self._env.timeout(0)
 
     def _do_place(self, target: tuple[int, int]):
         item = self._carrying
         self.state = f"place_{item}"
+        self._publish_status()
         yield self._env.timeout(getattr(self.config, self._PLACE_TIME.get(item, "block_place_time")))
         if item == "anchor":
             self.world.set_anchor(*target)
@@ -281,6 +290,7 @@ class Assembler(Robot):
 
     def _do_inflate(self):
         self.state = "inflating"
+        self._publish_status()
         steps = 60
         for i in range(steps):
             self.world.pod_inflation = (i + 1) / steps

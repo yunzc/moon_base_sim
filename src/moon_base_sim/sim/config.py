@@ -7,7 +7,6 @@ from pydantic import BaseModel, ConfigDict
 
 from ..mission.blueprint import BlueprintConfig
 from .robots import RobotsConfig
-from .sensors import SensorsConfig
 from .world import WorldConfig
 
 
@@ -54,12 +53,41 @@ class Config(BaseModel):
     blueprint: BlueprintConfig
     robots: RobotsConfig
     layout: LayoutConfig
-    sensors: SensorsConfig
     comms: CommsConfig
 
 
-def load_config(path: str | Path) -> Config:
-    """Parse a YAML file into a fully-specified :class:`Config`."""
-    with open(path) as f:
-        data = yaml.safe_load(f)
+def load_config(
+    sim_path: str | Path = None,
+    fleet_path: str | Path = None,
+    blueprint_path: str | Path = None,
+    comms_path: str | Path = None,
+) -> Config:
+    """Parse YAML files into a fully-specified :class:`Config`.
+
+    Args:
+        sim_path: Path to simulation config (world, sensors, etc.)
+        fleet_path: Path to fleet config (robots, layout)
+        blueprint_path: Path to blueprint config
+        comms_path: Path to comms config
+
+    All paths are optional but the combined data must form a valid Config.
+    """
+    data = {}
+
+    if sim_path:
+        with open(sim_path) as f:
+            data.update(yaml.safe_load(f))
+
+    if fleet_path:
+        with open(fleet_path) as f:
+            data.update(yaml.safe_load(f))
+
+    if blueprint_path:
+        with open(blueprint_path) as f:
+            data.update(yaml.safe_load(f))
+
+    if comms_path:
+        with open(comms_path) as f:
+            data.update(yaml.safe_load(f))
+
     return Config.model_validate(data)

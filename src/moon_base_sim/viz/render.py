@@ -71,11 +71,11 @@ class Renderer:
     def _draw_terrain(self) -> None:
         foundation = set(self.blueprint.foundation_cells(self.world))
         f_mean = self.blueprint.foundation_mean_elevation(self.world)
-        tol = self.blueprint.config.elevation_tolerance_cm
+        tol = self.blueprint.config.elevation_tolerance_m
         for y in range(self.world.h):
             for x in range(self.world.w):
                 e = self.world.elevation[y][x]
-                g = max(0, min(255, int((e + 15) / 30 * 255)))
+                g = max(0, min(255, int((e + 0.15) / 0.30 * 255)))
                 pygame.draw.rect(self.screen, (g, g, g), self._cell_rect(x, y))
                 if (x, y) in foundation and abs(e - f_mean) <= tol:
                     pygame.draw.rect(
@@ -195,27 +195,27 @@ class Renderer:
         y = self.h - bar_h - 24
 
         for i in range(bar_h):
-            # top → +15 (white), bottom → -15 (black)
-            e = 15 - (i / max(1, bar_h - 1)) * 30
-            g = max(0, min(255, int((e + 15) / 30 * 255)))
+            # top → +0.15 (white), bottom → -0.15 (black)
+            e = 0.15 - (i / max(1, bar_h - 1)) * 0.30
+            g = max(0, min(255, int((e + 0.15) / 0.30 * 255)))
             pygame.draw.line(self.screen, (g, g, g), (x, y + i), (x + bar_w, y + i))
         pygame.draw.rect(self.screen, TEXT, (x, y, bar_w, bar_h), 1)
 
         title = self.font.render("elev", True, TEXT)
         self.screen.blit(title, (x - 4, y - 18))
-        unit = self.font.render("cm", True, TEXT)
-        self.screen.blit(unit, (x - 2, y + bar_h + 4))
+        unit = self.font.render("m", True, TEXT)
+        self.screen.blit(unit, (x + 4, y + bar_h + 4))
 
         for label, val in (
-            ("+15", 15),
-            ("+10", 10),
-            ("+5", 5),
+            ("+0.15", 0.15),
+            ("+0.10", 0.10),
+            ("+0.05", 0.05),
             ("0", 0),
-            ("-5", -5),
-            ("-10", -10),
-            ("-15", -15),
+            ("-0.05", -0.05),
+            ("-0.10", -0.10),
+            ("-0.15", -0.15),
         ):
-            ty = y + int((1 - (val + 15) / 30) * bar_h)
+            ty = y + int((1 - (val + 0.15) / 0.30) * bar_h)
             surf = self.font.render(label, True, TEXT)
             pygame.draw.line(
                 self.screen, TEXT, (x + bar_w, ty), (x + bar_w + 3, ty), 1

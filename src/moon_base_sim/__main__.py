@@ -17,7 +17,10 @@ from .sim.simulator import Simulator
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
-    p.add_argument("--config", required=True, help="path to a config YAML file")
+    p.add_argument("--sim", required=True, help="path to simulation config YAML file")
+    p.add_argument("--fleet", required=True, help="path to fleet config YAML file")
+    p.add_argument("--blueprint", required=True, help="path to blueprint/goals config YAML file")
+    p.add_argument("--comms", required=True, help="path to communication config YAML file")
     p.add_argument("--headless", action="store_true")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--max-time", type=float, default=1e9, help="stop after N sim-seconds")
@@ -92,7 +95,8 @@ def run(config: Config, headless: bool, seed: int, max_time: float) -> int:
 def main() -> None:
     args = parse_args()
     config = _with_comms_overrides(
-        load_config(args.config), args.telemetry, args.commands, args.factor
+        load_config(args.sim, args.fleet, args.blueprint, args.comms),
+        args.telemetry, args.commands, args.factor
     )
     raise SystemExit(run(config, args.headless, args.seed, args.max_time))
 

@@ -35,13 +35,13 @@ def check_site_prep(obs: "GtObservation", blueprint: "Blueprint") -> tuple[bool,
     depth = s_mean - f_mean
     flatness = sum(abs(v - f_mean) for v in f_vals) / len(f_vals)
 
-    summary = f"depth={depth:.1f}cm flat={flatness:.1f}cm"
+    summary = f"depth={depth:.2f}m flat={flatness:.2f}m"
     cfg = blueprint.config
     issues: list[str] = []
-    if depth < cfg.min_foundation_depth_cm:
-        issues.append(f"need ≥{cfg.min_foundation_depth_cm:.0f}cm deep")
-    if flatness > cfg.elevation_tolerance_cm:
-        issues.append(f"need ≤{cfg.elevation_tolerance_cm:.0f}cm rough")
+    if depth < cfg.min_foundation_depth_m:
+        issues.append(f"need ≥{cfg.min_foundation_depth_m:.2f}m deep")
+    if flatness > cfg.elevation_tolerance_m:
+        issues.append(f"need ≤{cfg.elevation_tolerance_m:.2f}m rough")
     if issues:
         return False, summary + " | " + ", ".join(issues)
     return True, summary

@@ -1,0 +1,13 @@
+# Simulation configuration - world physics
+
+sim:
+  cell_size: 16
+  sim_speed: 20.0
+  target_fps: 30
+  tick: 0.5
+
+world:
+  grid_w: 40
+  grid_h: 40
+  elevation_min_m: -0.15
+  elevation_max_m: 0.15

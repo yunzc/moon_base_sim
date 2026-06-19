@@ -39,16 +39,17 @@ then offers a tiny interface:
 
 A top-down grid (`grid_w × grid_h`) holding everything physical:
 
-* **`elevation`** — per-cell terrain height in cm (initialized random-uniform
+* **`elevation`** — per-cell terrain height in meters (initialized random-uniform
   within a configured range),
 * **`occupancy`** — per-cell boolean of what blocks movement,
 * **`blocks` / `anchors`** — placed components,
 * **`pod_inflation`**, **`airlock_docked`**, **`pod_deployed`** — habitat state.
 
-The world is pure state with instantaneous mutators — `grade` (average a cell
-with its neighborhood), `excavate` (lower), `deposit` (raise), `set_block`,
-`set_anchor`. It models *what* the site is, never *when* — the passage of time
-belongs to the robots and the clock.
+The world is pure state with instantaneous mutators — `grade` (average a cell's
+elevation with its neighborhood), `excavate` (lower terrain by depth in meters),
+`deposit` (raise terrain by height in meters), `set_block`, `set_anchor`. It
+models *what* the site is, never *when* — the passage of time belongs to the
+robots and the clock. Each grid cell represents 1m² of lunar surface.
 
 ### The Robots (`sim/robots.py`)
 
@@ -67,11 +68,15 @@ cardinal `step`; a robot cannot teleport.
 
 ### Sensors (`sim/sensors/`)
 
-Perception is mediated by robot-mounted sensors, each publishing at its own rate.
-The built-in `GtSensor` ("ground truth") snapshots the whole world into an
-immutable `GtObservation` — elevation, occupancy, placed anchors/blocks, airlock
-and pod state. Observations are *latched*: a consumer always reads the latest
-published snapshot, subject to the sensor's publish-rate latency.
+Perception is mediated by robot-mounted sensors, with each robot having its own
+sensor configuration. Sensors publish at their own rates, defined per-robot in
+the fleet configuration. The built-in `GtSensor` ("ground truth") snapshots the
+whole world into an immutable `GtObservation` — elevation, occupancy, placed
+anchors/blocks, airlock and pod state. Observations are *latched*: a consumer
+always reads the latest published snapshot, subject to the sensor's publish-rate
+latency. Different robots can have different sensor update rates based on their
+operational needs (e.g., mobile robots may need higher update rates than
+stationary producers).
 
 ### Building Components
 
@@ -90,9 +95,30 @@ published snapshot, subject to the sensor's publish-rate latency.
 
 ### Configuration (`sim/config.py`)
 
-Everything is data-driven from a single YAML file (see `configs/default.yaml`),
-parsed into per-domain **frozen** Pydantic configs: `sim`, `world`, `blueprint`,
-`robots` (fleet composition), `layout` (fixed site positions), and `sensors`.
+Everything is data-driven from YAML files, parsed into per-domain **frozen**
+Pydantic configs. Configs are separated by concern:
+
+- **`configs/sim.yaml`** — World and simulation settings
+  - Grid dimensions (40×40 default)
+  - Terrain elevation range (-0.15m to +0.15m)
+  - Simulation speed and rendering parameters
+
+- **`configs/fleet.yaml`** — Robot specifications and deployment
+  - Individual robot parameters (speed, action times, capacities)
+  - Per-robot sensor configurations (type, update rate)
+  - Work site locations (depots, pits, production sites)
+  - All depths/heights in meters (e.g., `excavate_depth_m: 0.10`)
+
+- **`configs/blueprint.yaml`** — Construction specifications
+  - Habitat geometry (pod center, dome/berm radii)
+  - Foundation requirements (depth ≥ 0.08m, flatness ≤ 0.05m)
+  - Number and placement of anchors
+
+- **`configs/comms.yaml`** — Communication between sim and autonomy
+  - ZMQ socket addresses for telemetry and commands
+  - Time pacing factor (wall-seconds per sim-second)
+
+- **`configs/autonomy/`** — Autonomy-specific parameters (e.g., `baseline.yaml`)
 
 ---
 
@@ -126,7 +152,7 @@ sensor observation, never from privileged world access.
 
 | Goal             | Acceptance criterion                                              | Depends on              |
 | ---------------- | ---------------------------------------------------------------- | ----------------------- |
-| `site_prep`      | Foundation depth ≥ `min_foundation_depth_cm` **and** flatness ≤ `elevation_tolerance_cm` | — |
+| `site_prep`      | Foundation depth ≥ `min_foundation_depth_m` **and** flatness ≤ `elevation_tolerance_m` | — |
 | `anchors`        | Every `anchor_cell` has an anchor placed                          | `site_prep`             |
 | `blocks`         | Every `dome_floor_cell` has a block placed                        | `anchors`               |
 | `airlock_docked` | Airlock reported docked                                           | `site_prep`             |
@@ -145,10 +171,12 @@ sim first (it runs free, robots idle, until a client connects), then the autonom
 
 ```bash
 # Terminal 1 — the sim service (real-time, Pygame view; --headless for no window)
-uv run python -m moon_base_sim --config configs/default.yaml
+uv run python -m moon_base_sim --sim configs/sim.yaml --fleet configs/fleet.yaml \
+    --blueprint configs/blueprint.yaml --comms configs/comms.yaml
 
-# Terminal 2 — an autonomy that connects and drives the fleet
-uv run python -m moon_base_sim.autonomy --config configs/default.yaml
+# Terminal 2 — an autonomy that connects and drives the fleet (no sim config needed!)
+uv run python -m moon_base_sim.autonomy --fleet configs/fleet.yaml \
+    --blueprint configs/blueprint.yaml --comms configs/comms.yaml
 ```
 
 The sim paces sim-time to wall-time by `comms.factor` (wall-seconds per sim-second;

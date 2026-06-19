@@ -16,19 +16,23 @@ from .world import World
 
 
 def build_fleet(env, world: World, config: Config, endpoint) -> list[Robot]:
-    def mount() -> list[GtSensor]:
-        return [GtSensor(world, config.sensors.gt)]
+    def mount_sensors(robot_config) -> list[GtSensor]:
+        """Create sensors based on the robot's individual config."""
+        sensors = []
+        if hasattr(robot_config.sensors, 'gt'):
+            sensors.append(GtSensor(world, robot_config.sensors.gt))
+        return sensors
 
     layout, robots = config.layout, config.robots
     fleet: list[Robot] = []
     lx, ly = layout.loader_depot
     for i, c in enumerate(robots.loaders):
-        fleet.append(Loader(f"L{i}", lx + i, ly, c, world, mount(), env, endpoint))
+        fleet.append(Loader(f"L{i}", lx + i, ly, c, world, mount_sensors(c), env, endpoint))
     for i, (c, (px, py)) in enumerate(zip(robots.producers, layout.producer_sites)):
-        fleet.append(Producer(f"P{i}", px, py, c, world, mount(), env, endpoint))
+        fleet.append(Producer(f"P{i}", px, py, c, world, mount_sensors(c), env, endpoint))
     ax, ay = layout.assembler_depot
     for i, c in enumerate(robots.assemblers):
-        fleet.append(Assembler(f"A{i}", ax - i, ay, c, world, mount(), env, endpoint))
+        fleet.append(Assembler(f"A{i}", ax - i, ay, c, world, mount_sensors(c), env, endpoint))
     return fleet
 
 
@@ -39,7 +43,10 @@ class Simulator:
         self.endpoint = SimEndpoint(config.comms.telemetry_addr, config.comms.command_addr)
         self.fleet = build_fleet(self.env, self.world, config, self.endpoint)
         self._by_id = {r.rid: r for r in self.fleet}
-        status_period = 1.0 / config.sensors.gt.publish_hz
+        # Use the first robot's sensor period for heartbeat, or default to 0.5s
+        status_period = 0.5
+        if self.fleet and self.fleet[0].sensors:
+            status_period = 1.0 / self.fleet[0].config.sensors.gt.publish_hz
         for r in self.fleet:
             r._peers = self._by_id
             self.env.process(r.run())

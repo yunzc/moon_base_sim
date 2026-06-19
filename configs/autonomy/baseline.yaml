@@ -1,0 +1,15 @@
+# Baseline autonomy configuration
+# Placeholder for autonomy-specific parameters such as:
+# - Planning horizon
+# - Task allocation strategy
+# - Pathfinding parameters
+# - Coordination rules
+# - Phase transition thresholds
+
+autonomy:
+  type: baseline
+  # Add autonomy-specific parameters here as needed
+  # For example:
+  # planning_horizon: 10
+  # replan_frequency: 5.0
+  # task_allocation: greedy
