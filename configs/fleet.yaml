@@ -6,12 +6,11 @@ layout:
   producer_sites: [[5, 35], [35, 35]]  # Positions of stationary producer plants
   assembler_depot: [37, 5]       # Starting position for assemblers & component pickup
   regolith_pits: [[8, 35], [32, 35]]   # Where loaders excavate regolith
-  spoil_site: [5, 5]             # Where loaders dump excess material during grading
 
 # Robot fleet composition and capabilities
 robots:
   loaders:
-    - speed: 4.0
+    - speed: 6.0
       grade_time: 2.0
       excavate_time: 1.0
       unload_time: 1.0
@@ -21,7 +20,7 @@ robots:
       deposit_height_m: 0.10
       sensors:
         gt: { publish_hz: 2.0 }
-    - speed: 4.0
+    - speed: 6.0
       grade_time: 2.0
       excavate_time: 1.0
       unload_time: 1.0
@@ -31,7 +30,7 @@ robots:
       deposit_height_m: 0.10
       sensors:
         gt: { publish_hz: 2.0 }
-    - speed: 4.0
+    - speed: 6.0
       grade_time: 2.0
       excavate_time: 1.0
       unload_time: 1.0
@@ -42,25 +41,25 @@ robots:
       sensors:
         gt: { publish_hz: 2.0 }
   producers:
-    - speed: 1.0
+    - speed: 2.0
       produce_time: 6.0
       regolith_per_block: 3
       sensors:
         gt: { publish_hz: 1.0 }  # Stationary producers can update less frequently
-    - speed: 1.0
+    - speed: 2.0
       produce_time: 6.0
       regolith_per_block: 3
       sensors:
         gt: { publish_hz: 1.0 }
   assemblers:
-    - speed: 4.0
+    - speed: 6.0
       anchor_drive_time: 4.0
       block_place_time: 3.0
       dock_time: 8.0
       inflate_time: 6.0
       sensors:
         gt: { publish_hz: 2.0 }
-    - speed: 4.0
+    - speed: 6.0
       anchor_drive_time: 4.0
       block_place_time: 3.0
       dock_time: 8.0

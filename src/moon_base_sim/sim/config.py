@@ -30,7 +30,6 @@ class LayoutConfig(BaseModel):
     producer_sites: list[tuple[int, int]]
     assembler_depot: tuple[int, int]
     regolith_pits: list[tuple[int, int]]
-    spoil_site: tuple[int, int]
 
 
 class CommsConfig(BaseModel):

@@ -7,6 +7,7 @@ so a robot is "done" when ``done_seq == the last seq we sent it``.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from enum import Enum, auto
 
@@ -94,6 +95,21 @@ class Baseline:
     def _per_block(self, rid: str) -> int:
         return self.config.robots.producers[int(rid[1:])].regolith_per_block
 
+    def _spoil_cell(self, pos: Coord) -> Coord:
+        """Nearest cell just outside the foundation perimeter, radially out from ``pos``."""
+        obs = self.model.obs
+        cx, cy = self.blueprint.config.pod_center
+        r = self.blueprint.config.berm_radius
+        dx, dy = pos[0] - cx, pos[1] - cy
+        if dx * dx + dy * dy > r * r:
+            return pos
+        if dx == 0 and dy == 0:
+            dx = 1
+        scale = (r + 1) / math.hypot(dx, dy)
+        x = min(max(int(round(cx + dx * scale)), 0), obs.w - 1)
+        y = min(max(int(round(cy + dy * scale)), 0), obs.h - 1)
+        return (x, y)
+
     # -- per-robot journey driver (walk-then-act) ------------------------
     def _fire(self, view, task: Task) -> None:
         if task.action in ("excavate", "grade", "unload_ground", "place"):
@@ -154,13 +170,13 @@ class Baseline:
             if not self._free(v.rid):
                 continue
             if v.regolith >= self._loader_cap(v.rid):
-                self.state.plans[v.rid] = [Task(self.layout.spoil_site, "unload_ground")]
+                self.state.plans[v.rid] = [Task(self._spoil_cell(v.pos), "unload_ground")]
             elif self.state.dig_pending:
                 cell = _nearest(self.state.dig_pending, v.pos)
                 self.state.dig_pending.discard(cell)
                 self.state.plans[v.rid] = [Task(cell, "excavate")]
             elif v.regolith > 0:
-                self.state.plans[v.rid] = [Task(self.layout.spoil_site, "unload_ground")]
+                self.state.plans[v.rid] = [Task(self._spoil_cell(v.pos), "unload_ground")]
         if not self.state.dig_pending and all(
             self._free(v.rid) and v.regolith == 0 for v in loaders
         ):
