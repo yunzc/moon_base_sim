@@ -63,7 +63,7 @@ def run(config: Config, headless: bool, seed: int, max_time: float) -> int:
     else:
         from .viz.render import Renderer
 
-        renderer = Renderer(sim.world, sim.fleet, blueprint, config.sim)
+        renderer = Renderer(sim.world, sim.fleet, blueprint, config.sim, config.layout.landing_zone)
         chunk = (1.0 / config.sim.target_fps) * config.sim.sim_speed
 
     print(

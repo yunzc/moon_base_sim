@@ -14,8 +14,7 @@ GRID = (30, 30, 40)
 POD = (50, 240, 240)
 ANCHOR = (255, 90, 90)
 BLOCK = (80, 130, 220)
-AIRLOCK = (90, 220, 255)
-FOUNDATION_OK = (80, 200, 120)
+AIRLOCK = (80, 220, 120)
 TEXT = (230, 230, 240)
 LABEL = (255, 80, 80)
 
@@ -27,13 +26,16 @@ class Renderer:
         fleet: list[Robot],
         blueprint: Blueprint,
         sim: SimConfig,
+        landing_zone: tuple[int, int],
     ):
         pygame.init()
         pygame.display.set_caption("moon_base_sim")
         self.world = world
         self.fleet = fleet
+        self.pod = next((r for r in fleet if r.kind == "pod"), None)
         self.blueprint = blueprint
         self.sim = sim
+        self.landing_zone = landing_zone
         self._latched: dict[str, str] = {}   # goal.name -> reason, kept once OK
         self.cell = sim.cell_size
         self._elev_lo = sim.elev_display_min_m
@@ -75,22 +77,15 @@ class Renderer:
         return True
 
     def _draw_terrain(self) -> None:
-        foundation = set(self.blueprint.foundation_cells(self.world))
-        f_mean = self.blueprint.foundation_mean_elevation(self.world)
-        tol = self.blueprint.config.elevation_tolerance_m
         for y in range(self.world.h):
             for x in range(self.world.w):
-                e = self.world.elevation[y][x]
-                g = self._shade(e)
+                g = self._shade(self.world.elevation[y][x])
                 pygame.draw.rect(self.screen, (g, g, g), self._cell_rect(x, y))
-                if (x, y) in foundation and abs(e - f_mean) <= tol:
-                    pygame.draw.rect(
-                        self.screen, FOUNDATION_OK, self._cell_rect(x, y), 1
-                    )
 
     def _draw_pod(self) -> None:
-        cx, cy = self.blueprint.pod_center
-        center_px = (cx * self.cell + self.cell // 2, cy * self.cell + self.cell // 2)
+        if self.pod is None:
+            return
+        center_px = (self.pod.x * self.cell + self.cell // 2, self.pod.y * self.cell + self.cell // 2)
         t = self.world.pod_inflation
         deflated = self.cell
         inflated = self.blueprint.dome_radius * self.cell
@@ -98,21 +93,18 @@ class Renderer:
         pygame.draw.circle(self.screen, POD, center_px, max(6, r), 2)
 
     def _draw_anchors(self) -> None:
-        planned = self.blueprint.anchor_cells()
-        for (x, y) in planned:
+        for (x, y) in self.world.anchors:
             rect = self._cell_rect(x, y).inflate(-self.cell // 2, -self.cell // 2)
-            placed = (x, y) in self.world.anchors
-            color = ANCHOR if placed else (80, 40, 40)
-            pygame.draw.rect(self.screen, color, rect)
+            pygame.draw.rect(self.screen, ANCHOR, rect)
 
     def _draw_blocks(self) -> None:
         for (x, y) in self.world.blocks:
             pygame.draw.rect(self.screen, BLOCK, self._cell_rect(x, y))
 
     def _draw_airlock(self) -> None:
-        x, y = self.blueprint.airlock_cell()
-        color = AIRLOCK if self.world.airlock_docked else (40, 80, 100)
-        pygame.draw.rect(self.screen, color, self._cell_rect(x, y))
+        # Staged at the landing zone until an assembler docks it at the dock cell.
+        x, y = self.blueprint.airlock_cell() if self.world.airlock_docked else self.landing_zone
+        pygame.draw.rect(self.screen, AIRLOCK, self._cell_rect(x, y))
 
     def _draw_grid(self) -> None:
         for x in range(self.world.w + 1):
@@ -130,6 +122,8 @@ class Renderer:
 
     def _draw_robots(self) -> None:
         for r in self.fleet:
+            if r.kind == "pod":
+                continue   # drawn as the inflating ring by _draw_pod
             cx = r.x * self.cell + self.cell // 2
             cy = r.y * self.cell + self.cell // 2
             pygame.draw.circle(self.screen, r.color, (cx, cy), self.cell // 2 - 2)
@@ -234,7 +228,6 @@ class Renderer:
             ("Anchor",       ANCHOR,          "square"),
             ("Block",        BLOCK,           "square"),
             ("Airlock",      AIRLOCK,         "square"),
-            ("Foundation",   FOUNDATION_OK,   "outline"),
         ]
         line_h = self.font.get_height() + 4
         sw = 14  # swatch size

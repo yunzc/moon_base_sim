@@ -69,6 +69,7 @@ class Baseline:
             len(config.robots.loaders)
             + len(config.robots.producers)
             + len(config.robots.assemblers)
+            + 1   # the pod
         )
         self._cmds: list[Command] = []
         self.model = None
@@ -155,6 +156,14 @@ class Baseline:
         if not self.state.started:
             self.state.foundation = list(self.blueprint.foundation_cells(model.obs))
             self.state.dig_pending = set(self.state.foundation)
+            pods = self._of_kind("pod")
+            if pods:
+                # Relocate the Pod to the site center up front, before anchors/blocks
+                # ring it in and any placed block can block its path.
+                self.state.plans[pods[0].rid] = [Task(self.blueprint.pod_center, "arrive")]
+            # Producers land with the fleet and drive out to their plant sites.
+            for v, site in zip(self._of_kind("producer"), self.layout.producer_sites):
+                self.state.plans[v.rid] = [Task(tuple(site), "arrive")]
             self.state.started = True
         self._advance()
         getattr(self, f"_{self.state.phase.name.lower()}")()
@@ -210,7 +219,7 @@ class Baseline:
             cell = _nearest(self.state.anchor_pending, v.pos)
             self.state.anchor_pending.discard(cell)
             self.state.plans[v.rid] = [
-                Task(self.layout.assembler_depot, "pickup", "anchor"),
+                Task(self.layout.landing_zone, "pickup", "anchor"),
                 Task(cell, "place"),
             ]
 
@@ -255,7 +264,7 @@ class Baseline:
         docker = assemblers[0]
         if not self.state.airlock_issued and self._free(docker.rid):
             self.state.plans[docker.rid] = [
-                Task(self.layout.assembler_depot, "pickup", "airlock"),
+                Task(self.layout.landing_zone, "pickup", "airlock"),
                 Task(self.blueprint.airlock_cell(), "place"),
             ]
             self.state.airlock_issued = True
@@ -264,12 +273,12 @@ class Baseline:
         if "pod_inflated" in self._latched:
             self.state.phase = Phase.DONE
             return
-        assemblers = self._of_kind("assembler")
-        if not assemblers:
+        pods = self._of_kind("pod")
+        if not pods:
             return
-        docker = assemblers[0]
-        if not self.state.inflate_issued and self._free(docker.rid):
-            self._send(docker.rid, "inflate")
+        pod = pods[0]
+        if not self.state.inflate_issued and self._free(pod.rid):
+            self._send(pod.rid, "inflate")
             self.state.inflate_issued = True
 
     def _done(self) -> None:

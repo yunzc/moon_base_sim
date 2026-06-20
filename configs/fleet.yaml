@@ -2,9 +2,8 @@
 
 # Fixed locations where robots operate
 layout:
-  loader_depot: [2, 2]           # Starting position for loader robots
+  landing_zone: [2, 2]           # Shared touchdown: loaders, assemblers & the Pod start here; anchors/airlock staged here
   producer_sites: [[5, 35], [35, 35]]  # Positions of stationary producer plants
-  assembler_depot: [37, 5]       # Starting position for assemblers & component pickup
   regolith_pits: [[8, 35], [32, 35]]   # Where loaders excavate regolith
 
 # Robot fleet composition and capabilities
@@ -56,13 +55,16 @@ robots:
       anchor_drive_time: 4.0
       block_place_time: 3.0
       dock_time: 8.0
-      inflate_time: 6.0
       sensors:
         gt: { publish_hz: 2.0 }
     - speed: 6.0
       anchor_drive_time: 4.0
       block_place_time: 3.0
       dock_time: 8.0
-      inflate_time: 6.0
       sensors:
         gt: { publish_hz: 2.0 }
+  pod:                  # The habitat: lands with the fleet, drives to center, then inflates
+    speed: 4.0
+    inflate_time: 6.0
+    sensors:
+      gt: { publish_hz: 2.0 }

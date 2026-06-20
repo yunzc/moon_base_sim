@@ -29,9 +29,8 @@ class LayoutConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    loader_depot: tuple[int, int]
+    landing_zone: tuple[int, int]
     producer_sites: list[tuple[int, int]]
-    assembler_depot: tuple[int, int]
     regolith_pits: list[tuple[int, int]]
 
 

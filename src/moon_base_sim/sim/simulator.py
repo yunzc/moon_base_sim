@@ -10,7 +10,7 @@ import simpy.rt
 
 from ..comms import SimEndpoint
 from .config import Config
-from .robots import Assembler, Loader, Producer, Robot
+from .robots import Assembler, Loader, Pod, Producer, Robot
 from .sensors import GtSensor
 from .world import World
 
@@ -25,14 +25,14 @@ def build_fleet(env, world: World, config: Config, endpoint) -> list[Robot]:
 
     layout, robots = config.layout, config.robots
     fleet: list[Robot] = []
-    lx, ly = layout.loader_depot
+    lx, ly = layout.landing_zone   # every robot touches down here, then disperses
     for i, c in enumerate(robots.loaders):
         fleet.append(Loader(f"L{i}", lx + i, ly, c, world, mount_sensors(c), env, endpoint))
-    for i, (c, (px, py)) in enumerate(zip(robots.producers, layout.producer_sites)):
-        fleet.append(Producer(f"P{i}", px, py, c, world, mount_sensors(c), env, endpoint))
-    ax, ay = layout.assembler_depot
+    for i, c in enumerate(robots.producers):
+        fleet.append(Producer(f"P{i}", lx + i, ly + 1, c, world, mount_sensors(c), env, endpoint))
     for i, c in enumerate(robots.assemblers):
-        fleet.append(Assembler(f"A{i}", ax - i, ay, c, world, mount_sensors(c), env, endpoint))
+        fleet.append(Assembler(f"A{i}", lx + i, ly + 2, c, world, mount_sensors(c), env, endpoint))
+    fleet.append(Pod("PD", lx, ly + 3, robots.pod, world, mount_sensors(robots.pod), env, endpoint))
     return fleet
 
 

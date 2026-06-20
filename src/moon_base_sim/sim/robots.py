@@ -58,6 +58,11 @@ class AssemblerConfig(RobotConfig):
     anchor_drive_time: float
     block_place_time: float
     dock_time: float
+
+
+class PodConfig(RobotConfig):
+    """The habitat pod: movement speed and inflation duration."""
+
     inflate_time: float
 
 
@@ -69,6 +74,7 @@ class RobotsConfig(BaseModel):
     loaders: list[LoaderConfig]
     producers: list[ProducerConfig]
     assemblers: list[AssemblerConfig]
+    pod: PodConfig
 
 
 class Robot:
@@ -284,6 +290,16 @@ class Assembler(Robot):
             self.world.airlock_docked = True
             self.world.pod_deployed = True
         self._carrying = None
+
+
+class Pod(Robot):
+    """The inflatable habitat: lands with the fleet, drives to the site center,
+    then inflates in place once docked."""
+
+    kind = "pod"
+    color = (50, 240, 240)
+
+    config: PodConfig
 
     def _do_inflate(self):
         self.state = "inflating"

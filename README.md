@@ -63,8 +63,9 @@ cardinal `step`; a robot cannot teleport.
 | Kind          | Role                                              | Primitive actions |
 | ------------- | ------------------------------------------------- | ----------------- |
 | **Loader**    | Mobile earth-mover; carries regolith.             | `step`, `excavate`, `grade`, `unload_ground`, `unload_into` |
-| **Producer**  | Stationary plant; sinters regolith into blocks.   | `produce` (+ `ready_blocks` / `take_block`) |
-| **Assembler** | Mobile arm; fetches and installs components.      | `step`, `pickup`, `place`, `inflate` |
+| **Producer**  | Plant; drives to its site, then sinters regolith into blocks. | `step`, `produce` |
+| **Assembler** | Mobile arm; fetches and installs components.      | `step`, `pickup`, `place` |
+| **Pod**       | The habitat; drives to the site center, then inflates. | `step`, `inflate` |
 
 ### Sensors (`sim/sensors/`)
 
@@ -80,7 +81,8 @@ stationary producers).
 
 ### Building Components
 
-* **Core Pod** — inflatable habitat shipped from Earth (`pod_inflation` 0→1).
+* **Core Pod** — inflatable habitat shipped from Earth; lands with the fleet at
+  the landing zone, drives to the site center, then inflates (`pod_inflation` 0→1).
 * **Anchors** — moon-made spikes that pin the deflated Pod.
 * **Blocks** — sintered regolith tiles that form the radiation-shielding shell.
 * **Airlock** — rigid docking module shipped from Earth.
@@ -106,7 +108,7 @@ Pydantic configs. Configs are separated by concern:
 - **`configs/fleet.yaml`** — Robot specifications and deployment
   - Individual robot parameters (speed, action times, capacities)
   - Per-robot sensor configurations (type, update rate)
-  - Work site locations (depots, pits, production sites)
+  - Work site locations (landing zone, pits, production sites)
   - All depths/heights in meters (e.g., `excavate_depth_m: 0.10`)
 
 - **`configs/blueprint.yaml`** — Construction specifications
@@ -221,7 +223,7 @@ harness in `autonomy/client.py` builds a world `Model` and runs any policy.
 | `pickup`        | `(item,)`        | assembler grabs `"anchor"\|"block"\|"airlock"` |
 | `place`         | `(cell,)`        | assembler installs the carried item |
 | `produce`       | `()`             | producer converts feedstock into a block |
-| `inflate`       | `()`             | assembler inflates the pod |
+| `inflate`       | `()`             | pod inflates itself in place |
 
 ### Contract an autonomy must honor
 
