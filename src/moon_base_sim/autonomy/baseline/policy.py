@@ -20,9 +20,13 @@ from ..navigation import next_step
 Coord = tuple[int, int]
 
 
+GRADE_PASSES = 5      # smoothing passes over the raw foundation before any digging
+MAX_DIG_PASSES = 4    # cap on uniform dig passes; exits early once depth is met
+
+
 class Phase(Enum):
-    DIG = auto()
-    GRADE = auto()
+    GRADE = auto()    # flatten the raw terrain first, so digging can stay uniform
+    DIG = auto()      # then lower the whole (flat) foundation uniformly for depth
     ANCHORS = auto()
     BLOCKS = auto()
     AIRLOCK = auto()
@@ -40,8 +44,9 @@ class Task:
 
 @dataclass
 class PolicyState:
-    phase: Phase = Phase.DIG
+    phase: Phase = Phase.GRADE
     grade_pass: int = 0
+    dig_pass: int = 0
     started: bool = False
     foundation: list[Coord] = field(default_factory=list)
     plans: dict[str, list[Task]] = field(default_factory=dict)
@@ -155,7 +160,7 @@ class Baseline:
         latched_statuses(model.obs, self.blueprint, self._latched)
         if not self.state.started:
             self.state.foundation = list(self.blueprint.foundation_cells(model.obs))
-            self.state.dig_pending = set(self.state.foundation)
+            self.state.grade_pending = set(self.state.foundation)
             pods = self._of_kind("pod")
             if pods:
                 # Relocate the Pod to the site center up front, before anchors/blocks
@@ -173,7 +178,26 @@ class Baseline:
         return len(self._latched) >= len(GOALS)
 
     # -- phase handlers --------------------------------------------------
+    def _grade(self) -> None:
+        """Smooth the raw foundation flat before any digging (uniform-dig prep)."""
+        loaders = self._of_kind("loader")
+        for v in loaders:
+            if self._free(v.rid) and self.state.grade_pending:
+                cell = _nearest(self.state.grade_pending, v.pos)
+                self.state.grade_pending.discard(cell)
+                self.state.plans[v.rid] = [Task(cell, "grade")]
+        if not self.state.grade_pending and all(self._free(v.rid) for v in loaders):
+            self.state.grade_pass += 1
+            if self.state.grade_pass >= GRADE_PASSES:
+                self.state.phase = Phase.DIG
+                self.state.dig_pass = 0
+                self.state.dig_pending = set(self.state.foundation)
+            else:
+                self.state.grade_pending = set(self.state.foundation)
+
     def _dig(self) -> None:
+        """Lower the (now flat) foundation uniformly, one full pass at a time,
+        until it's deep enough — every cell dug the same number of times keeps it flat."""
         loaders = self._of_kind("loader")
         for v in loaders:
             if not self._free(v.rid):
@@ -189,24 +213,12 @@ class Baseline:
         if not self.state.dig_pending and all(
             self._free(v.rid) and v.regolith == 0 for v in loaders
         ):
-            self.state.phase = Phase.GRADE
-            self.state.grade_pass = 0
-            self.state.grade_pending = set(self.state.foundation)
-
-    def _grade(self) -> None:
-        loaders = self._of_kind("loader")
-        for v in loaders:
-            if self._free(v.rid) and self.state.grade_pending:
-                cell = _nearest(self.state.grade_pending, v.pos)
-                self.state.grade_pending.discard(cell)
-                self.state.plans[v.rid] = [Task(cell, "grade")]
-        if not self.state.grade_pending and all(self._free(v.rid) for v in loaders):
-            self.state.grade_pass += 1
-            if "site_prep" in self._latched or self.state.grade_pass >= 5:
+            self.state.dig_pass += 1
+            if "site_prep" in self._latched or self.state.dig_pass >= MAX_DIG_PASSES:
                 self.state.phase = Phase.ANCHORS
                 self.state.anchor_pending = set(self.blueprint.anchor_cells())
             else:
-                self.state.grade_pending = set(self.state.foundation)
+                self.state.dig_pending = set(self.state.foundation)
 
     def _anchors(self) -> None:
         if "anchors" in self._latched:
