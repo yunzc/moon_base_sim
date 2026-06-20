@@ -26,21 +26,22 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--max-time", type=float, default=1e9, help="stop after N sim-seconds")
     p.add_argument("--telemetry", help="override comms.telemetry_addr")
     p.add_argument("--commands", help="override comms.command_addr")
-    p.add_argument("--factor", type=float, help="override comms.factor (wall-s per sim-s)")
+    p.add_argument("--speed", type=float, help="override sim.sim_speed (× real-time)")
     return p.parse_args()
 
 
-def _with_comms_overrides(config: Config, telemetry, commands, factor) -> Config:
+def _with_overrides(config: Config, telemetry, commands, speed) -> Config:
     updates = {}
     if telemetry:
-        updates["telemetry_addr"] = telemetry
+        updates["comms"] = config.comms.model_copy(update={"telemetry_addr": telemetry})
     if commands:
-        updates["command_addr"] = commands
-    if factor is not None:
-        updates["factor"] = factor
+        comms = updates.get("comms", config.comms)
+        updates["comms"] = comms.model_copy(update={"command_addr": commands})
+    if speed is not None:
+        updates["sim"] = config.sim.model_copy(update={"sim_speed": speed})
     if not updates:
         return config
-    return config.model_copy(update={"comms": config.comms.model_copy(update=updates)})
+    return config.model_copy(update=updates)
 
 
 def _summary(world, statuses, now: float) -> None:
@@ -63,7 +64,7 @@ def run(config: Config, headless: bool, seed: int, max_time: float) -> int:
         from .viz.render import Renderer
 
         renderer = Renderer(sim.world, sim.fleet, blueprint, config.sim)
-        chunk = (1.0 / config.sim.target_fps) / config.comms.factor
+        chunk = (1.0 / config.sim.target_fps) * config.sim.sim_speed
 
     print(
         f"sim listening — telemetry {config.comms.telemetry_addr}  "
@@ -94,9 +95,9 @@ def run(config: Config, headless: bool, seed: int, max_time: float) -> int:
 
 def main() -> None:
     args = parse_args()
-    config = _with_comms_overrides(
+    config = _with_overrides(
         load_config(args.sim, args.fleet, args.blueprint, args.comms),
-        args.telemetry, args.commands, args.factor
+        args.telemetry, args.commands, args.speed
     )
     raise SystemExit(run(config, args.headless, args.seed, args.max_time))
 

@@ -16,7 +16,7 @@ class SimConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     cell_size: int
-    sim_speed: float
+    sim_speed: float     # × real-time: sim-seconds per wall-second (1.0 = real-time, 50 = 50× faster)
     target_fps: int
     tick: float          # headless decide/step granularity, sim-seconds (~1/speed)
 
@@ -34,11 +34,10 @@ class LayoutConfig(BaseModel):
 
 
 class CommsConfig(BaseModel):
-    """Real-time pacing + zmq addresses for the sim/autonomy split."""
+    """zmq addresses for the sim/autonomy split."""
 
     model_config = ConfigDict(frozen=True)
 
-    factor: float          # wall-seconds per sim-second (RealtimeEnvironment)
     telemetry_addr: str    # sim PUB / autonomy SUB
     command_addr: str      # autonomy PUSH / sim PULL
 

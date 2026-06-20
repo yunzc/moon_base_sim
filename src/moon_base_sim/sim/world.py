@@ -72,11 +72,11 @@ class World:
         self.elevation[y, x] = float(block.mean())
 
     def excavate(self, x: int, y: int, depth: float) -> None:
-        """Lower a cell's elevation by ``depth`` cm."""
+        """Lower a cell's elevation by ``depth`` m."""
         if self.in_bounds(x, y):
             self.elevation[y][x] -= depth
 
     def deposit(self, x: int, y: int, height: float) -> None:
-        """Raise a cell's elevation by ``height`` cm."""
+        """Raise a cell's elevation by ``height`` m."""
         if self.in_bounds(x, y):
             self.elevation[y][x] += height

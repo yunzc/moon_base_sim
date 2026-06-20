@@ -1,6 +1,5 @@
 # Communication configuration for sim-autonomy connection
 
 comms:
-  factor: 0.02                        # wall-seconds per sim-second (~50x real-time)
   telemetry_addr: tcp://127.0.0.1:5555
   command_addr: tcp://127.0.0.1:5556

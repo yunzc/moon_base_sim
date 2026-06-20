@@ -28,6 +28,7 @@ class RobotConfig(BaseModel):
 
     speed: float
     sensors: SensorsConfig
+    idle_timeout: float = 1.0   # sim-sec with no command before reporting idle
 
 
 class LoaderConfig(RobotConfig):
@@ -109,7 +110,6 @@ class Robot:
         self._peers: dict[str, "Robot"] = {}   # set by the Simulator
         self._cur_seq = 0
         self._done_seq = 0
-        self._busy = False
 
     @property
     def pos(self) -> tuple[int, int]:
@@ -121,7 +121,7 @@ class Robot:
 
     @property
     def is_idle(self) -> bool:
-        return not self._busy
+        return self.state == "idle"
 
     def deliver(self, cmd) -> None:
         """Hand a command to this robot's inbox (called by the Simulator's router)."""
@@ -136,14 +136,19 @@ class Robot:
     def run(self):
         self._publish_status()
         while True:
-            cmd = yield self._inbox.get()
+            get = self._inbox.get()
+            outcome = yield get | self._env.timeout(self.config.idle_timeout)
+            if get not in outcome:
+                # No command for a while — report idle and keep waiting.
+                get.cancel()
+                if self.state != "idle":
+                    self.state = "idle"
+                    self._publish_status()
+                continue
+            cmd = outcome[get]
             self._cur_seq = cmd.seq
-            self._busy = True
-            self._publish_status()
             yield from getattr(self, f"_do_{cmd.verb}")(*cmd.args)
             self._done_seq = cmd.seq
-            self._busy = False
-            self.state = "idle"
             self._publish_status()
 
     def _publish_status(self) -> None:
@@ -153,7 +158,7 @@ class Robot:
                 rid=self.rid,
                 kind=self.kind,
                 pos=self.pos,
-                is_idle=not self._busy,
+                is_idle=self.state == "idle",
                 carrying=self.carrying,
                 regolith=getattr(self, "regolith", 0),
                 regolith_inventory=getattr(self, "regolith_inventory", 0),
@@ -168,7 +173,6 @@ class Robot:
         if not self.world.in_bounds(nx, ny):
             return
         self.state = "driving"
-        self._publish_status()  # Publish the "driving" state
         yield self._env.timeout(1.0 / max(self.speed, 0.1))
         self.x, self.y = nx, ny
 
@@ -189,7 +193,6 @@ class Loader(Robot):
 
     def _do_grade(self, cell: tuple[int, int]):
         self.state = "grading"
-        self._publish_status()
         yield self._env.timeout(self.config.grade_time)
         self.world.grade(*cell, self.config.grade_neighborhood)
 
@@ -197,7 +200,6 @@ class Loader(Robot):
         if self.regolith >= self.config.loader_capacity:
             return
         self.state = "excavating"
-        self._publish_status()
         yield self._env.timeout(self.config.excavate_time)
         self.world.excavate(*cell, self.config.excavate_depth_m)
         self.regolith += 1
@@ -206,7 +208,6 @@ class Loader(Robot):
         if self.regolith == 0:
             return
         self.state = "unloading"
-        self._publish_status()
         yield self._env.timeout(self.config.unload_time)
         for _ in range(self.regolith):
             self.world.deposit(*cell, self.config.deposit_height_m)
@@ -217,7 +218,6 @@ class Loader(Robot):
             return
         producer = self._peers[producer_rid]
         self.state = "feeding"
-        self._publish_status()
         yield self._env.timeout(self.config.unload_time)
         producer.regolith_inventory += self.regolith
         self.regolith = 0
@@ -240,7 +240,6 @@ class Producer(Robot):
     def _do_produce(self):
         if self.regolith_inventory >= self.config.regolith_per_block:
             self.state = "producing"
-            self._publish_status()
             yield self._env.timeout(self.config.produce_time)
             self.regolith_inventory -= self.config.regolith_per_block
             self._endpoint.publish(
@@ -271,13 +270,11 @@ class Assembler(Robot):
     def _do_pickup(self, item: str):
         self._carrying = item
         self.state = f"fetch_{item}"
-        self._publish_status()
         yield self._env.timeout(0)
 
     def _do_place(self, target: tuple[int, int]):
         item = self._carrying
         self.state = f"place_{item}"
-        self._publish_status()
         yield self._env.timeout(getattr(self.config, self._PLACE_TIME.get(item, "block_place_time")))
         if item == "anchor":
             self.world.set_anchor(*target)
@@ -290,7 +287,6 @@ class Assembler(Robot):
 
     def _do_inflate(self):
         self.state = "inflating"
-        self._publish_status()
         steps = 60
         for i in range(steps):
             self.world.pod_inflation = (i + 1) / steps

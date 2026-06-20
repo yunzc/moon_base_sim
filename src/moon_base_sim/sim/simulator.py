@@ -38,7 +38,7 @@ def build_fleet(env, world: World, config: Config, endpoint) -> list[Robot]:
 
 class Simulator:
     def __init__(self, config: Config, seed: int = 0):
-        self.env = simpy.rt.RealtimeEnvironment(factor=config.comms.factor, strict=False)
+        self.env = simpy.rt.RealtimeEnvironment(factor=1.0 / config.sim.sim_speed, strict=False)
         self.world = World.generate(config.world, seed=seed)
         self.endpoint = SimEndpoint(config.comms.telemetry_addr, config.comms.command_addr)
         self.fleet = build_fleet(self.env, self.world, config, self.endpoint)

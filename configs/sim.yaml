@@ -2,7 +2,7 @@
 
 sim:
   cell_size: 16
-  sim_speed: 20.0
+  sim_speed: 1.0      # × real-time: sim-seconds per wall-second (1.0 = real-time, 50 = 50× faster)
   target_fps: 30
   tick: 0.5
 
