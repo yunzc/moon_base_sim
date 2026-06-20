@@ -5,9 +5,11 @@ sim:
   sim_speed: 1.0      # × real-time: sim-seconds per wall-second (1.0 = real-time, 50 = 50× faster)
   target_fps: 30
   tick: 0.5
+  elev_display_min_m: -1.0   # colorbar floor — leaves headroom below terrain for excavation
+  elev_display_max_m: 1.0    # colorbar ceiling
 
 world:
   grid_w: 40
   grid_h: 40
-  elevation_min_m: -0.15
-  elevation_max_m: 0.15
+  elevation_min_m: -0.3
+  elevation_max_m: 0.3

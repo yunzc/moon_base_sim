@@ -36,6 +36,8 @@ class Renderer:
         self.sim = sim
         self._latched: dict[str, str] = {}   # goal.name -> reason, kept once OK
         self.cell = sim.cell_size
+        self._elev_lo = sim.elev_display_min_m
+        self._elev_span = sim.elev_display_max_m - sim.elev_display_min_m
         self.panel_w = 340
         self.w = world.w * self.cell + self.panel_w
         self.h = world.h * self.cell
@@ -46,6 +48,10 @@ class Renderer:
 
     def _cell_rect(self, x: int, y: int) -> pygame.Rect:
         return pygame.Rect(x * self.cell, y * self.cell, self.cell, self.cell)
+
+    def _shade(self, e: float) -> int:
+        """Elevation → gray byte over the configured display range (clamped)."""
+        return max(0, min(255, int((e - self._elev_lo) / self._elev_span * 255)))
 
     def draw(self, sim_time: float) -> bool:
         for event in pygame.event.get():
@@ -75,7 +81,7 @@ class Renderer:
         for y in range(self.world.h):
             for x in range(self.world.w):
                 e = self.world.elevation[y][x]
-                g = max(0, min(255, int((e + 0.15) / 0.30 * 255)))
+                g = self._shade(e)
                 pygame.draw.rect(self.screen, (g, g, g), self._cell_rect(x, y))
                 if (x, y) in foundation and abs(e - f_mean) <= tol:
                     pygame.draw.rect(
@@ -194,10 +200,11 @@ class Renderer:
         x = self.world.w * self.cell + self.panel_w - bar_w - 36
         y = self.h - bar_h - 24
 
+        hi = self._elev_lo + self._elev_span
         for i in range(bar_h):
-            # top → +0.15 (white), bottom → -0.15 (black)
-            e = 0.15 - (i / max(1, bar_h - 1)) * 0.30
-            g = max(0, min(255, int((e + 0.15) / 0.30 * 255)))
+            # top → display max (white), bottom → display min (black)
+            e = hi - (i / max(1, bar_h - 1)) * self._elev_span
+            g = self._shade(e)
             pygame.draw.line(self.screen, (g, g, g), (x, y + i), (x + bar_w, y + i))
         pygame.draw.rect(self.screen, TEXT, (x, y, bar_w, bar_h), 1)
 
@@ -206,17 +213,11 @@ class Renderer:
         unit = self.font.render("m", True, TEXT)
         self.screen.blit(unit, (x + 4, y + bar_h + 4))
 
-        for label, val in (
-            ("+0.15", 0.15),
-            ("+0.10", 0.10),
-            ("+0.05", 0.05),
-            ("0", 0),
-            ("-0.05", -0.05),
-            ("-0.10", -0.10),
-            ("-0.15", -0.15),
-        ):
-            ty = y + int((1 - (val + 0.15) / 0.30) * bar_h)
-            surf = self.font.render(label, True, TEXT)
+        n_ticks = 7
+        for i in range(n_ticks):
+            val = hi - self._elev_span * i / (n_ticks - 1)
+            ty = y + int((1 - (val - self._elev_lo) / self._elev_span) * bar_h)
+            surf = self.font.render(f"{val:+.2f}", True, TEXT)
             pygame.draw.line(
                 self.screen, TEXT, (x + bar_w, ty), (x + bar_w + 3, ty), 1
             )

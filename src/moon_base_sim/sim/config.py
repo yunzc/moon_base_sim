@@ -20,6 +20,9 @@ class SimConfig(BaseModel):
     target_fps: int
     tick: float          # headless decide/step granularity, sim-seconds (~1/speed)
 
+    elev_display_min_m: float  # colorbar floor (independent of terrain gen range)
+    elev_display_max_m: float  # colorbar ceiling
+
 
 class LayoutConfig(BaseModel):
     """Fixed site positions the baseline autonomy drives robots between."""
