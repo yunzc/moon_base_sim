@@ -161,11 +161,6 @@ class Baseline:
         if not self.state.started:
             self.state.foundation = list(self.blueprint.foundation_cells(model.obs))
             self.state.grade_pending = set(self.state.foundation)
-            pods = self._of_kind("pod")
-            if pods:
-                # Relocate the Pod to the site center up front, before anchors/blocks
-                # ring it in and any placed block can block its path.
-                self.state.plans[pods[0].rid] = [Task(self.blueprint.pod_center, "arrive")]
             # Producers land with the fleet and drive out to their plant sites.
             for v, site in zip(self._of_kind("producer"), self.layout.producer_sites):
                 self.state.plans[v.rid] = [Task(tuple(site), "arrive")]
@@ -217,6 +212,11 @@ class Baseline:
             if "site_prep" in self._latched or self.state.dig_pass >= MAX_DIG_PASSES:
                 self.state.phase = Phase.ANCHORS
                 self.state.anchor_pending = set(self.blueprint.anchor_cells())
+                # Foundation is prepared — now move the Pod in, before anchors/blocks
+                # ring it in and any placed block can block its path to center.
+                pods = self._of_kind("pod")
+                if pods:
+                    self.state.plans[pods[0].rid] = [Task(self.blueprint.pod_center, "arrive")]
             else:
                 self.state.dig_pending = set(self.state.foundation)
 
